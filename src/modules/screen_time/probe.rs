@@ -378,7 +378,7 @@ pub fn executable_name(path: &str) -> Option<String> {
             && !pointer.is_null()
         {
             let pairs = std::slice::from_raw_parts(pointer as *const u16, (length / 2) as usize);
-            for pair in pairs.chunks_exact(2) {
+            for pair in pairs.as_chunks::<2>().0 {
                 translations.push(format!("{:04x}{:04x}", pair[0], pair[1]));
             }
         }
@@ -486,15 +486,17 @@ unsafe fn icon_pixels(icon: HICON) -> Option<(u32, u32, Vec<u8>)> {
             let mut color = read_bitmap(info.hbmColor, width, height)?;
 
             // Icône ancienne sans canal alpha : la transparence vient du masque.
-            if color.chunks_exact(4).all(|pixel| pixel[3] == 0) {
+            if color.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0) {
                 let mask = read_bitmap(info.hbmMask, width, height)?;
-                for (pixel, mask_pixel) in color.chunks_exact_mut(4).zip(mask.chunks_exact(4)) {
+                let mask_pixels = mask.as_chunks::<4>().0;
+                for (pixel, mask_pixel) in color.as_chunks_mut::<4>().0.iter_mut().zip(mask_pixels)
+                {
                     pixel[3] = if mask_pixel[0] == 0 { 255 } else { 0 };
                 }
             }
 
             // BGRA vers RGBA.
-            for pixel in color.chunks_exact_mut(4) {
+            for pixel in color.as_chunks_mut::<4>().0 {
                 pixel.swap(0, 2);
             }
 
