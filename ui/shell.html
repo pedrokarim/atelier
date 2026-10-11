@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="color-scheme" content="light dark" />
+<title>Atelier</title>
+<style>/*@core.css*/</style>
+<style>
+body { display: flex; }
+
+/* --- Barre latérale ------------------------------------------------------ */
+
+.sidebar {
+  width: 224px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px 14px;
+  gap: 2px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 8px 18px;
+}
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(135deg, #5598e7, #1c5cab);
+}
+.brand-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+.brand-sub { font-size: 11.5px; color: var(--muted); }
+
+.nav-group {
+  padding: 16px 10px 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item:focus-visible { outline: none; box-shadow: var(--ring); }
+.nav-item[aria-current="page"] {
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+:root[data-theme="dark"] .nav-item[aria-current="page"] { color: var(--accent-strong); }
+
+.nav-spacer { flex: 1; min-height: 16px; }
+
+.sidebar-status {
+  margin: 8px 2px 4px;
+  padding: 11px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 12px;
+}
+.sidebar-status:empty { display: none; }
+
+/* --- Contenu ------------------------------------------------------------- */
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.page { padding: 26px 32px 40px; max-width: 1240px; animation: rise 160ms ease; }
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.page-head .titles { flex: 1; min-width: 0; }
+.page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.page-lede { margin: 3px 0 0; color: var(--text-2); font-size: 13px; max-width: 70ch; }
+.page-actions { display: flex; gap: 8px; align-items: center; }
+
+/* --- Grille de widgets --------------------------------------------------- */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--cell));
+  grid-auto-rows: var(--cell);
+  grid-auto-flow: dense;
+  gap: var(--gap);
+}
+.board .widget { transition: box-shadow 140ms ease, transform 140ms ease, opacity 140ms ease; }
+.board .widget.size-s { grid-column: span 1; grid-row: span 1; }
+.board .widget.size-m { grid-column: span 2; grid-row: span 1; }
+.board .widget.size-l { grid-column: span 2; grid-row: span 2; }
+.board .widget.size-w { grid-column: span 4; grid-row: span 1; }
+
+.board.editing .widget { cursor: grab; }
+.board.editing .widget .widget-menu { opacity: 1; }
+.board.editing .widget::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent);
+  pointer-events: none;
+}
+.board .widget.dragging { opacity: 0.35; }
+.board .widget.drop-target { transform: scale(0.98); box-shadow: 0 0 0 2px var(--accent); }
+
+.board-empty {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 70px 20px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-2);
+  text-align: center;
+}
+.board-empty-title { font-weight: 650; color: var(--text); font-size: 15px; }
+
+/* --- Catalogue de widgets ------------------------------------------------ */
+
+.catalog-group + .catalog-group { margin-top: 18px; }
+.catalog-group-title { font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.catalog-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.catalog-item + .catalog-item { margin-top: 8px; }
+.catalog-text { flex: 1; min-width: 0; }
+.catalog-title { font-weight: 650; }
+.catalog-desc { color: var(--text-2); font-size: 12px; }
+.catalog-sizes { display: flex; gap: 4px; margin-top: 6px; }
+.catalog-sizes span { font-size: 10.5px; font-weight: 650; color: var(--muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; }
+
+/* --- Réglages ------------------------------------------------------------ */
+
+.settings { max-width: 760px; }
+.status-line { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+.status-line.ok .status-dot { background: var(--good); }
+.path { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; user-select: text; margin-top: 4px; }
+.card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.module-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.module-row:last-child { border-bottom: 0; }
+.module-row .grow { flex: 1; min-width: 0; }
+.module-icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-wash); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<nav class="sidebar" id="sidebar">
+  <div class="brand">
+    <div class="brand-mark" id="brandMark"></div>
+    <div>
+      <div class="brand-title">Atelier</div>
+      <div class="brand-sub">Widgets et outils</div>
+    </div>
+  </div>
+  <div id="nav"></div>
+  <div class="nav-spacer"></div>
+  <div class="sidebar-status" id="sidebarStatus"></div>
+  <button class="nav-item" data-route="settings" id="navSettings"></button>
+</nav>
+
+<main class="main">
+  <div class="scroll" id="scroll"><div class="page" id="page"></div></div>
+</main>
+
+<script>/*@boot*/</script>
+<script>/*@core.js*/</script>
+<script>/*@modules*/</script>
+<script>
+"use strict";
+
+const A = Atelier;
+const $ = (id) => document.getElementById(id);
+const boot = A.boot;
+
+document.documentElement.style.setProperty("--cell", `${boot.cell}px`);
+document.documentElement.style.setProperty("--gap", `${boot.gap}px`);
+$("brandMark").innerHTML = A.icon("grid", 17);
+
+/* --- Navigation ---------------------------------------------------------- */
+
+let currentRoute = null;
+let cleanups = [];
+
+function parseRoute(route) {
+  const [path, query] = String(route || "home").split("?");
+  return { path, params: Object.fromEntries(new URLSearchParams(query || "")) };
+}
+
+function navItems() {
+  const items = [{ route: "home", label: "Accueil", icon: "home" }];
+  for (const module of A.modules.values()) {
+    const pages = module.pages.filter((page) => !page.hidden);
+    if (!pages.length) continue;
+    items.push({ group: module.name });
+    for (const page of pages) {
+      items.push({ route: `${module.id}/${page.id}`, label: page.title, icon: page.icon || module.icon || "grid" });
+    }
+  }
+  return items;
+}
+
+function renderNav() {
+  const nav = $("nav");
+  nav.innerHTML = "";
+  for (const item of navItems()) {
+    if (item.group) {
+      nav.insertAdjacentHTML("beforeend", `<div class="nav-group">${A.escape(item.group)}</div>`);
+      continue;
+    }
+    const button = document.createElement("button");
+    button.className = "nav-item";
+    button.dataset.route = item.route;
+    button.innerHTML = `${A.icon(item.icon, 17)}<span>${A.escape(item.label)}</span>`;
+    nav.appendChild(button);
+  }
+  $("navSettings").innerHTML = `${A.icon("settings", 17)}<span>Réglages</span>`;
+
+  document.querySelectorAll(".nav-item").forEach((button) =>
+    button.addEventListener("click", () => navigate(button.dataset.route)));
+}
+
+function markCurrent(path) {
+  // Une page cachée (fiche d'application) éclaire l'entrée de son module.
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    const route = button.dataset.route;
+    const active = route === path;
+    button.setAttribute("aria-current", active ? "page" : "false");
+  });
+}
+
+function runCleanups() {
+  for (const cleanup of cleanups) {
+    try { cleanup(); } catch (error) { console.error(error); }
+  }
+  cleanups = [];
+  A.hideTooltip();
+  A.closePopover();
+}
+
+async function navigate(route, params) {
+  const target = params ? A.routeString(route, params) : route;
+  const { path, params: query } = parseRoute(target);
+  runCleanups();
+  currentRoute = target;
+  markCurrent(path);
+
+  const page = $("page");
+  page.innerHTML = "";
+  page.style.animation = "none";
+  void page.offsetWidth;
+  page.style.animation = "";
+  $("scroll").scrollTop = 0;
+
+  if (path === "home") return renderHome(page);
+  if (path === "settings") return renderSettings(page);
+
+  const [moduleId, pageId] = path.split("/");
+  const module = A.modules.get(moduleId);
+  const definition = module && module.pages.find((candidate) => candidate.id === pageId);
+  if (!definition) {
+    page.innerHTML = `<div class="empty">${A.icon("alert", 28)}Cette page n’existe pas.</div>`;
+    return;
+  }
+
+  const ctx = {
+    params: query,
+    request: (method, args) => A.request(moduleId, method, args),
+    navigate: (next, args) => navigate(next.includes("/") || next === "home" || next === "settings" ? next : `${moduleId}/${next}`, args),
+    every(seconds, fn) {
+      const timer = setInterval(fn, seconds * 1000);
+      cleanups.push(() => clearInterval(timer));
+    },
+    onCleanup(fn) { cleanups.push(fn); },
+    on(event, fn) { cleanups.push(A.on(event, fn)); },
+  };
+
+  try {
+    const cleanup = await definition.render(page, ctx);
+    if (typeof cleanup === "function") cleanups.push(cleanup);
+  } catch (error) {
+    page.innerHTML = `<div class="empty">${A.icon("alert", 28)}${A.escape(error.message || error)}</div>`;
+  }
+}
+
+A.navigate = (route) => navigate(route);
+
+/* --- Accueil : la grille de widgets ------------------------------------- */
+
+let layout = { board: [], desktop: [] };
+let editing = false;
+
+function pageHead(title, lede, actions = "") {
+  return `
+    <div class="page-head">
+      <div class="titles">
+        <h1 class="page-title">${A.escape(title)}</h1>
+        ${lede ? `<p class="page-lede">${lede}</p>` : ""}
+      </div>
+      <div class="page-actions">${actions}</div>
+    </div>`;
+}
+
+async function saveBoard() {
+  try {
+    await A.request("core", "layout.board", { board: layout.board });
+  } catch (error) {
+    A.toast(`Disposition non enregistrée : ${error.message}`, "error");
+  }
+}
+
+function widgetFrame(instance) {
+  const frame = document.createElement("article");
+  frame.className = `widget size-${instance.size}`;
+  frame.dataset.instance = instance.id;
+  frame.innerHTML = `
+    <header class="widget-head">
+      <span class="widget-title"></span>
+      <button class="btn-icon widget-menu" type="button" aria-label="Options du widget" aria-expanded="false">${A.icon("more", 16)}</button>
+    </header>
+    <div class="widget-body"></div>`;
+  return frame;
+}
+
+async function renderHome(page) {
+  const today = A.capitalize(A.dateLabel(A.isoDate(new Date())));
+  page.innerHTML = pageHead("Accueil", today, `
+    <button class="btn" id="arrange" type="button">${A.icon("move", 15)}<span>Organiser</span></button>
+    <button class="btn btn-primary" id="addWidget" type="button">${A.icon("plus", 15)}Ajouter un widget</button>`) +
+    '<div class="board" id="board"></div>';
+
+  $("addWidget").addEventListener("click", openCatalog);
+  $("arrange").addEventListener("click", () => {
+    editing = !editing;
+    applyEditing();
+  });
+
+  // Quitter l'accueil arrête les rafraîchissements des widgets.
+  cleanups.push(() => {
+    for (const mount of mounts.values()) mount.destroy();
+    mounts.clear();
+  });
+
+  try {
+    layout = await A.request("core", "layout");
+  } catch (error) {
+    A.toast(`Disposition illisible : ${error.message}`, "error");
+  }
+
+  buildBoard();
+}
+
+const mounts = new Map();
+
+function applyEditing() {
+  const board = $("board");
+  const arrange = $("arrange");
+  if (!board || !arrange) return;
+  board.classList.toggle("editing", editing);
+  arrange.querySelector("span").textContent = editing ? "Terminer" : "Organiser";
+  arrange.classList.toggle("btn-primary", editing);
+  board.querySelectorAll(".widget").forEach((frame) => { frame.draggable = editing; });
+}
+
+function buildBoard() {
+  const board = $("board");
+  if (!board) return;
+  for (const mount of mounts.values()) mount.destroy();
+  mounts.clear();
+  board.innerHTML = "";
+
+  if (!layout.board.length) {
+    board.outerHTML = `
+      <div class="board-empty" id="board">
+        ${A.icon("grid", 34)}
+        <div class="board-empty-title">Aucun widget sur l’accueil</div>
+        <div>Les widgets résument d’un coup d’œil ce que font vos modules.</div>
+        <button class="btn btn-primary" type="button" id="emptyAdd">${A.icon("plus", 15)}Ajouter un widget</button>
+      </div>`;
+    $("emptyAdd").addEventListener("click", openCatalog);
+    return;
+  }
+
+  if (board.classList.contains("board-empty")) {
+    board.className = "board";
+  }
+
+  for (const instance of layout.board) {
+    const frame = widgetFrame(instance);
+    board.appendChild(frame);
+    mounts.set(instance.id, A.mountWidget(frame, instance));
+    wireFrame(frame, instance);
+  }
+  applyEditing();
+}
+
+function wireFrame(frame, instance) {
+  const menu = frame.querySelector(".widget-menu");
+  menu.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const definition = A.widgets.get(instance.widget);
+    const module = definition && A.modules.get(definition.module);
+    const firstPage = module && module.pages.find((page) => !page.hidden);
+    const items = [];
+    if (definition && definition.sizes.length > 1) {
+      items.push({ label: "Taille", heading: true });
+      items.push({
+        sizes: definition.sizes,
+        current: instance.size,
+        choose: (size) => {
+          instance.size = size;
+          frame.className = `widget size-${size}`;
+          frame.draggable = editing;
+          mounts.get(instance.id).destroy();
+          mounts.set(instance.id, A.mountWidget(frame, { ...instance, size }));
+          saveBoard();
+        },
+      });
+      items.push("separator");
+    }
+    if (definition) {
+      items.push({
+        label: "Épingler sur le bureau",
+        icon: "pin",
+        action: async () => {
+          try {
+            await A.request("core", "widget.pin", { instance });
+            A.toast(`« ${definition.title} » est épinglé sur le bureau. Faites-le glisser par son titre.`, "success");
+          } catch (error) {
+            A.toast(`Épinglage impossible : ${error.message}`, "error");
+          }
+        },
+      });
+    }
+    if (firstPage) {
+      items.push({
+        label: `Ouvrir ${module.name}`,
+        icon: "external",
+        action: () => navigate(`${module.id}/${firstPage.id}`),
+      });
+    }
+    items.push("separator");
+    items.push({
+      label: "Retirer de l’accueil",
+      icon: "trash",
+      danger: true,
+      action: () => {
+        mounts.get(instance.id)?.destroy();
+        mounts.delete(instance.id);
+        layout.board = layout.board.filter((candidate) => candidate.id !== instance.id);
+        frame.remove();
+        saveBoard();
+        if (!layout.board.length) buildBoard();
+      },
+    });
+    A.popover(menu, items);
+  });
+
+  /* Réorganisation par glisser-déposer : les nœuds sont déplacés, pas
+     remontés, pour que les widgets gardent leur état. */
+  frame.addEventListener("dragstart", (event) => {
+    if (!editing) return event.preventDefault();
+    frame.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", instance.id);
+  });
+  frame.addEventListener("dragend", () => {
+    frame.classList.remove("dragging");
+    document.querySelectorAll(".drop-target").forEach((node) => node.classList.remove("drop-target"));
+  });
+  frame.addEventListener("dragover", (event) => {
+    if (!editing) return;
+    event.preventDefault();
+    frame.classList.add("drop-target");
+  });
+  frame.addEventListener("dragleave", () => frame.classList.remove("drop-target"));
+  frame.addEventListener("drop", (event) => {
+    event.preventDefault();
+    frame.classList.remove("drop-target");
+    const sourceId = event.dataTransfer.getData("text/plain");
+    if (!sourceId || sourceId === instance.id) return;
+
+    const from = layout.board.findIndex((candidate) => candidate.id === sourceId);
+    const to = layout.board.findIndex((candidate) => candidate.id === instance.id);
+    if (from < 0 || to < 0) return;
+    const [moved] = layout.board.splice(from, 1);
+    layout.board.splice(to, 0, moved);
+
+    const board = $("board");
+    for (const item of layout.board) {
+      board.appendChild(board.querySelector(`[data-instance="${item.id}"]`));
+    }
+    saveBoard();
+  });
+}
+
+function newId() {
+  return `w${Date.now().toString(16)}${Math.floor(Math.random() * 4096).toString(16)}`;
+}
+
+function openCatalog() {
+  A.dialog({
+    title: "Ajouter un widget",
+    subtitle: "Chaque module propose ses widgets. Ils se posent sur l’accueil, et peuvent ensuite s’épingler sur le bureau.",
+    wide: true,
+    build(body, close) {
+      const groups = new Map();
+      for (const widget of A.widgets.values()) {
+        if (!groups.has(widget.module)) groups.set(widget.module, []);
+        groups.get(widget.module).push(widget);
+      }
+      if (!groups.size) {
+        body.innerHTML = `<div class="empty">${A.icon("grid", 28)}Aucun module ne propose de widget.</div>`;
+        return;
+      }
+      for (const [moduleId, list] of groups) {
+        const module = A.modules.get(moduleId);
+        const group = document.createElement("div");
+        group.className = "catalog-group";
+        group.innerHTML = `<div class="catalog-group-title">${A.escape(module ? module.name : moduleId)}</div>`;
+        for (const widget of list) {
+          const item = document.createElement("div");
+          item.className = "catalog-item";
+          item.innerHTML = `
+            <div class="module-icon">${A.icon(widget.icon || (module && module.icon) || "grid", 16)}</div>
+            <div class="catalog-text">
+              <div class="catalog-title">${A.escape(widget.title)}</div>
+              <div class="catalog-desc">${A.escape(widget.description || "")}</div>
+              <div class="catalog-sizes">${widget.sizes.map((size) => `<span title="${A.sizeName(size)}">${A.sizeLabel(size)}</span>`).join("")}</div>
+            </div>
+            <button class="btn" type="button">${A.icon("plus", 15)}Ajouter</button>`;
+          item.querySelector("button").addEventListener("click", () => {
+            layout.board.push({ id: newId(), widget: widget.id, size: widget.sizes[0], settings: {} });
+            saveBoard();
+            close();
+            if (currentRoute === "home") buildBoard();
+            else navigate("home");
+            A.toast(`« ${widget.title} » ajouté à l’accueil.`, "success");
+          });
+          group.appendChild(item);
+        }
+        body.appendChild(group);
+      }
+    },
+    actions: [{ label: "Fermer", ghost: true }],
+  });
+}
+
+/* --- Réglages ------------------------------------------------------------ */
+
+async function renderSettings(page) {
+  page.innerHTML = pageHead("Réglages", "Démarrage, installation, widgets du bureau et données.") +
+    '<div class="settings stack" id="settings"></div>';
+  const root = $("settings");
+
+  let status;
+  try {
+    status = await A.request("core", "status");
+    layout = await A.request("core", "layout");
+  } catch (error) {
+    root.innerHTML = `<div class="empty">${A.escape(error.message)}</div>`;
+    return;
+  }
+
+  const install = status.install || {};
+  const installText = install.installed
+    ? (install.running_from_install ? "Installé, et c’est cette copie qui s’exécute" : "Installé, mais une autre copie s’exécute")
+    : "Pas encore installé";
+
+  root.innerHTML = `
+    <section class="card">
+      <div class="card-head"><div class="module-icon">${A.icon("power", 16)}</div><div class="card-title">Démarrage</div></div>
+      <label class="toggle">
+        <input type="checkbox" id="autostart" ${status.autostart ? "checked" : ""} />
+        <span class="track"><span class="thumb"></span></span>
+        <span class="toggle-text">
+          <span class="toggle-title">Lancer Atelier à l’ouverture de session</span>
+          <span class="toggle-desc">Indispensable au suivi du temps d’écran : ce qui se passe avant le lancement n’est pas compté.</span>
+        </span>
+      </label>
+      ${status.autostartTarget ? `<div class="path">${A.escape(status.autostartTarget)}</div>` : ""}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div class="module-icon">${A.icon("monitor", 16)}</div><div class="card-title">Widgets du bureau</div></div>
+      <label class="toggle">
+        <input type="checkbox" id="desktopVisible" ${status.desktopHidden ? "" : "checked"} />
+        <span class="track"><span class="thumb"></span></span>
+        <span class="toggle-text">
+          <span class="toggle-title">Afficher les widgets épinglés</span>
+          <span class="toggle-desc">Épinglez un widget depuis son menu, sur l’accueil. Déplacez-le en le saisissant par son titre.</span>
+        </span>
+      </label>
+      <div id="pinnedList"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div class="module-icon">${A.icon("download", 16)}</div><div class="card-title">Installation</div></div>
+      <div class="status-line ${install.installed ? "ok" : ""}"><span class="status-dot"></span>${installText}</div>
+      <div class="path">${A.escape(install.installed ? install.installed_exe : install.current_exe)}</div>
+      <div class="field-hint">L’installation copie le programme dans un dossier stable et l’ajoute au menu Démarrer. Aucun droit d’administrateur n’est demandé.</div>
+      <div class="card-actions">
+        <button class="btn btn-primary" id="install" type="button">${A.icon("download", 15)}${install.installed ? (install.running_from_install ? "Réparer le raccourci" : "Remplacer la copie installée") : "Installer"}</button>
+        <button class="btn btn-danger" id="uninstall" type="button" ${install.installed ? "" : "disabled"}>${A.icon("trash", 15)}Désinstaller</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div class="module-icon">${A.icon("folder", 16)}</div><div class="card-title">Données</div></div>
+      <div class="status-line ${status.portable ? "ok" : ""}"><span class="status-dot"></span>${status.portable ? "Mode portable : les données voyagent avec le programme" : "Données rangées dans le profil Windows"}</div>
+      <div class="path">${A.escape(status.dataDir || "")}</div>
+      <div class="field-hint">Pour le mode portable, créez un dossier <b>data</b> à côté de l’exécutable : tout y sera rangé.</div>
+      <div class="card-actions">
+        <button class="btn" id="openData" type="button">${A.icon("folder", 15)}Ouvrir le dossier</button>
+        <button class="btn" id="openLog" type="button">${A.icon("file", 15)}Journal</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><div class="module-icon">${A.icon("layers", 16)}</div><div class="card-title">Modules</div><div class="spacer"></div><div class="card-sub">Atelier ${A.escape(boot.version)}</div></div>
+      <div id="moduleList"></div>
+    </section>
+
+    <div><button class="btn btn-ghost btn-danger" id="quit" type="button">${A.icon("power", 15)}Quitter Atelier</button></div>`;
+
+  const pinned = $("pinnedList");
+  if (layout.desktop.length) {
+    pinned.innerHTML = layout.desktop.map((item) => {
+      const widget = A.widgets.get(item.instance ? item.instance.widget : item.widget);
+      const name = widget ? widget.title : (item.widget || "Widget");
+      return `<div class="module-row"><div class="grow">${A.escape(name)} <span class="card-sub">${A.sep}${A.sizeName(item.size)}</span></div>
+        <button class="btn btn-ghost" data-unpin="${A.escape(item.id)}" type="button">${A.icon("x", 15)}Retirer</button></div>`;
+    }).join("");
+    pinned.querySelectorAll("[data-unpin]").forEach((button) =>
+      button.addEventListener("click", async () => {
+        await A.request("core", "widget.unpin", { id: button.dataset.unpin });
+        renderSettings(page);
+      }));
+  }
+
+  $("moduleList").innerHTML = [...A.modules.values()].map((module) => {
+    const count = [...A.widgets.values()].filter((widget) => widget.module === module.id).length;
+    return `<div class="module-row">
+      <div class="module-icon">${A.icon(module.icon || "grid", 16)}</div>
+      <div class="grow"><div style="font-weight:600">${A.escape(module.name)}</div>
+      <div class="card-sub">${A.escape(module.description || "")}</div></div>
+      <span class="badge">${count}${A.NBSP}widget${count > 1 ? "s" : ""}</span></div>`;
+  }).join("") + A.failures.map((failure) =>
+    `<div class="module-row"><div class="grow" style="color:var(--critical-text)">Module « ${A.escape(failure.id)} » en échec : ${A.escape(failure.message)}</div></div>`).join("");
+
+  $("autostart").addEventListener("change", async (event) => {
+    try {
+      await A.request("core", "autostart.set", { value: event.target.checked });
+    } catch (error) {
+      A.toast(error.message, "error");
+    }
+    renderSettings(page);
+  });
+  $("desktopVisible").addEventListener("change", (event) =>
+    A.request("core", "desktop.visible", { visible: event.target.checked }));
+  $("install").addEventListener("click", async () => {
+    try {
+      const result = await A.request("core", "install");
+      A.toast(`Installé dans ${result.path}\nAtelier apparaît dans le menu Démarrer.`, "success");
+    } catch (error) {
+      A.toast(`Installation impossible : ${error.message}`, "error");
+    }
+    renderSettings(page);
+  });
+  $("uninstall").addEventListener("click", async () => {
+    const ok = await A.confirm("Désinstaller Atelier ?",
+      "Le raccourci du menu Démarrer, le démarrage automatique et la copie installée seront retirés.\n\nVos données (historique, budgets, widgets) sont conservées.",
+      "Désinstaller");
+    if (!ok) return;
+    try {
+      await A.request("core", "uninstall");
+      A.toast("Désinstallation terminée.", "success");
+    } catch (error) {
+      A.toast(`Désinstallation impossible : ${error.message}`, "error");
+    }
+    renderSettings(page);
+  });
+  $("openData").addEventListener("click", () => A.request("core", "open.data"));
+  $("openLog").addEventListener("click", () => A.request("core", "open.log"));
+  $("quit").addEventListener("click", async () => {
+    const ok = await A.confirm("Quitter Atelier ?",
+      "Les widgets du bureau disparaissent et le suivi du temps d’écran s’interrompt jusqu’au prochain lancement.",
+      "Quitter");
+    if (ok) A.request("core", "quit");
+  });
+}
+
+/* --- Statut des modules dans la barre latérale -------------------------- */
+
+function mountSidebarStatus() {
+  const root = $("sidebarStatus");
+  const providers = [...A.modules.values()].filter((module) => module.sidebar);
+  if (!providers.length) return;
+  const provider = providers[0];
+  const ctx = {
+    request: (method, args) => A.request(provider.id, method, args),
+    navigate: (route, args) => navigate(route.includes("/") ? route : `${provider.id}/${route}`, args),
+  };
+  const render = () => provider.sidebar.render(root, ctx).catch(() => { root.innerHTML = ""; });
+  render();
+  setInterval(render, (provider.sidebar.refresh || 10) * 1000);
+}
+
+/* --- Démarrage ----------------------------------------------------------- */
+
+document.addEventListener("keydown", (event) => {
+  if (event.ctrlKey && !event.altKey && /^[1-9]$/.test(event.key)) {
+    const buttons = [...document.querySelectorAll(".nav-item")];
+    const target = buttons[Number(event.key) - 1];
+    if (target) {
+      event.preventDefault();
+      target.click();
+    }
+  }
+});
+
+renderNav();
+mountSidebarStatus();
+navigate(boot.page || "home");
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+name: Proposer une idée
+description: Un nouveau widget, un nouveau module, une amélioration.
+labels: [idée]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type
+      options:
+        - Nouveau widget
+        - Nouveau module
+        - Amélioration d'un module existant
+        - Autre
+    validations:
+      required: true
+  - type: textarea
+    id: need
+    attributes:
+      label: Le besoin
+      description: Ce que vous voulez voir ou faire, et pourquoi.
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: À quoi cela ressemblerait
+      description: Tailles de widget envisagées, données affichées, actions possibles.

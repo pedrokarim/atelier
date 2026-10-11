@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Signaler une faille de sécurité
+    url: https://github.com/pedrokarim/atelier/security/advisories/new
+    about: En privé, plutôt que dans une issue publique.

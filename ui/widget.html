@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="color-scheme" content="light dark" />
+<title>Widget Atelier</title>
+<style>/*@core.css*/</style>
+<style>
+/* La fenêtre elle-même est la carte : Windows en arrondit les coins et
+   dessine l'ombre. */
+body { background: var(--surface); }
+.widget {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 12px 16px 16px;
+}
+.widget-head { cursor: grab; }
+.widget-head:active { cursor: grabbing; }
+.widget-menu { opacity: 0.0; }
+body:hover .widget-menu { opacity: 1; }
+</style>
+</head>
+<body>
+
+<article class="widget" id="frame">
+  <header class="widget-head" id="handle">
+    <span class="widget-title"></span>
+    <button class="btn-icon widget-menu" type="button" id="menu" aria-label="Options du widget" aria-expanded="false"></button>
+  </header>
+  <div class="widget-body"></div>
+</article>
+
+<script>/*@boot*/</script>
+<script>/*@core.js*/</script>
+<script>/*@modules*/</script>
+<script>
+"use strict";
+
+const A = Atelier;
+const frame = document.getElementById("frame");
+const menu = document.getElementById("menu");
+const instance = A.boot.instance;
+let topmost = !!A.boot.topmost;
+
+menu.innerHTML = A.icon("more", 16);
+let mount = A.mountWidget(frame, instance);
+
+/* Saisir le titre déplace la fenêtre : l'hôte lance le déplacement natif. */
+document.getElementById("handle").addEventListener("mousedown", (event) => {
+  if (event.button !== 0 || menu.contains(event.target)) return;
+  A.request("core", "widget.drag");
+});
+
+function openMenu() {
+  const definition = A.widgets.get(instance.widget);
+  const module = definition && A.modules.get(definition.module);
+  const firstPage = module && module.pages.find((page) => !page.hidden);
+  const items = [];
+
+  if (definition && definition.sizes.length > 1) {
+    items.push({ label: "Taille", heading: true });
+    items.push({
+      sizes: definition.sizes,
+      current: instance.size,
+      choose: async (size) => {
+        instance.size = size;
+        await A.request("core", "widget.update", { size });
+        mount.destroy();
+        mount = A.mountWidget(frame, instance);
+      },
+    });
+    items.push("separator");
+  }
+
+  items.push({
+    label: "Toujours au premier plan",
+    icon: "layers",
+    checked: topmost,
+    action: async () => {
+      topmost = !topmost;
+      await A.request("core", "widget.update", { topmost });
+    },
+  });
+  if (firstPage) {
+    items.push({
+      label: `Ouvrir ${module.name}`,
+      icon: "external",
+      action: () => A.request("core", "open", { page: `${module.id}/${firstPage.id}` }),
+    });
+  }
+  items.push({ label: "Ouvrir Atelier", icon: "grid", action: () => A.request("core", "open", {}) });
+  items.push("separator");
+  items.push({
+    label: "Retirer du bureau",
+    icon: "x",
+    danger: true,
+    action: () => A.request("core", "widget.unpin"),
+  });
+
+  A.popover(menu, items);
+}
+
+menu.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openMenu();
+});
+document.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  openMenu();
+});
+</script>
+</body>
+</html>

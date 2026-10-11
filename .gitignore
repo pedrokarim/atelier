@@ -1,0 +1,8 @@
+/target
+
+# Données du mode portable, si l'on crée un dossier `data` à la racine.
+/data
+
+*.tmp
+*.log
+.env*

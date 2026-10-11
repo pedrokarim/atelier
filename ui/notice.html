@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="color-scheme" content="light dark" />
+<title>Atelier</title>
+<style>/*@core.css*/</style>
+<style>
+body { background: var(--surface); }
+.notice {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 14px;
+  animation: rise 200ms ease;
+}
+.notice-top { display: flex; gap: 12px; align-items: flex-start; flex: 1; min-height: 0; }
+.notice-icon { width: 36px; height: 36px; border-radius: 9px; flex: none; object-fit: contain; }
+.notice-glyph {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.notice.warning .notice-glyph { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning-text); }
+.notice.critical .notice-glyph { background: color-mix(in srgb, var(--critical) 15%, transparent); color: var(--critical-text); }
+.notice-text { flex: 1; min-width: 0; }
+.notice-title { display: flex; align-items: center; gap: 6px; font-weight: 650; font-size: 13.5px; }
+.notice-title svg { flex: none; }
+.notice.warning .notice-title svg { color: var(--warning-text); }
+.notice.critical .notice-title svg { color: var(--critical-text); }
+.notice-body { color: var(--text-2); font-size: 12.5px; margin-top: 2px; }
+.notice-close { margin: -6px -8px 0 0; }
+.notice-bottom { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.notice-bottom .spacer { flex: 1; }
+.countdown { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 12.5px; color: var(--critical-text); white-space: nowrap; }
+.notice-bottom .btn { height: 30px; }
+</style>
+</head>
+<body>
+
+<div class="notice" id="notice"></div>
+
+<script>/*@boot*/</script>
+<script>/*@core.js*/</script>
+<script>
+"use strict";
+
+const A = Atelier;
+const root = document.getElementById("notice");
+let timers = [];
+
+function clearTimers() {
+  timers.forEach(clearInterval);
+  timers = [];
+}
+
+function render(notice) {
+  clearTimers();
+  root.className = `notice ${notice.tone}`;
+  const toneIcon = notice.tone === "critical" ? "hourglass" : notice.tone === "warning" ? "alert" : "info";
+  const visual = notice.icon
+    ? `<img class="notice-icon" src="${notice.icon}" alt="" />`
+    : `<div class="notice-glyph">${A.icon(toneIcon, 18)}</div>`;
+
+  root.innerHTML = `
+    <div class="notice-top">
+      ${visual}
+      <div class="notice-text">
+        <div class="notice-title">${notice.icon ? A.icon(toneIcon, 14) : ""}<span>${A.escape(notice.title)}</span></div>
+        <div class="notice-body">${A.escape(notice.body)}</div>
+      </div>
+      <button class="btn-icon notice-close" type="button" aria-label="Fermer">${A.icon("x", 15)}</button>
+    </div>
+    <div class="notice-bottom">
+      ${notice.countdown ? '<span class="countdown" id="countdown"></span>' : ""}
+      <div class="spacer"></div>
+    </div>`;
+
+  const bottom = root.querySelector(".notice-bottom");
+  for (const action of notice.actions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `btn${action.primary ? " btn-primary" : ""}`;
+    button.textContent = action.label;
+    button.addEventListener("click", () =>
+      A.request("core", action.id === "dismiss" ? "notice.dismiss" : "notice.action",
+        { id: notice.id, action: action.id }));
+    bottom.appendChild(button);
+  }
+
+  root.querySelector(".notice-close").addEventListener("click", () =>
+    A.request("core", "notice.dismiss", { id: notice.id }));
+
+  if (notice.countdown) {
+    const end = Date.now() + notice.countdown * 1000;
+    const label = document.getElementById("countdown");
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      label.textContent = left > 0 ? `Fermeture dans ${left}${A.NBSP}s` : "Fermeture…";
+    };
+    tick();
+    timers.push(setInterval(tick, 250));
+  }
+
+  if (notice.timeout) {
+    const id = notice.id;
+    timers.push(setTimeout(() => A.request("core", "notice.dismiss", { id }), notice.timeout * 1000));
+  }
+}
+
+A.on("notice", render);
+render(A.boot.notice);
+</script>
+</body>
+</html>
