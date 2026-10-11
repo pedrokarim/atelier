@@ -6,6 +6,20 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [0.1.1] - 2026-10-11
+
+### Corrigé
+
+- Les options de ligne de commande (`--data-dir`, `--help`…) ne plantent
+  plus quand leur sortie est capturée ou redirigée.
+- Compatibilité avec Clippy 1.99.
+
+### Modifié
+
+- Dépendances à jour : `dirs` 7.0.0, `tray-icon` 0.24.2, `base64` 0.23.1.
+- Les notes de release ne reprennent plus les liens de bas de page du
+  journal.
+
 ## [0.1.0] - 2026-10-11
 
 Première version.
@@ -33,5 +47,6 @@ Première version.
   installation depuis le programme lui-même.
 - Intégration continue et publication automatique sur GitHub Actions.
 
-[Non publié]: https://github.com/pedrokarim/atelier/compare/v0.1.0...HEAD
+[Non publié]: https://github.com/pedrokarim/atelier/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/pedrokarim/atelier/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/pedrokarim/atelier/releases/tag/v0.1.0

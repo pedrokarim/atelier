@@ -29,6 +29,17 @@ use windows::core::w;
 
 use crate::logging::log_line;
 
+/// Affiche une ligne sur la sortie standard, sans jamais paniquer.
+///
+/// Compilé en application fenêtrée, le binaire n'a de sortie que si un
+/// terminal la lui prête ; `println!` paniquerait quand elle est absente ou
+/// fermée (sortie capturée, tube refermé).
+macro_rules! say {
+    ($($arg:tt)*) => {{
+        use std::io::Write;
+        let _ = writeln!(std::io::stdout(), $($arg)*);
+    }};
+}
 pub fn to_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
@@ -62,19 +73,19 @@ fn run() -> Result<()> {
         }
         Some("--install") => {
             let path = install::install()?;
-            println!("Installé : {}", path.display());
+            say!("Installé : {}", path.display());
             Ok(())
         }
         Some("--uninstall") => {
             match install::uninstall()? {
-                install::Removal::NothingToDo => println!("Rien à désinstaller."),
-                install::Removal::Removed => println!("Désinstallation terminée."),
-                install::Removal::Deferred => println!("Désinstallation planifiée."),
+                install::Removal::NothingToDo => say!("Rien à désinstaller."),
+                install::Removal::Removed => say!("Désinstallation terminée."),
+                install::Removal::Deferred => say!("Désinstallation planifiée."),
             }
             Ok(())
         }
         Some("--data-dir") => {
-            println!("{}", paths::data_dir()?.display());
+            say!("{}", paths::data_dir()?.display());
             Ok(())
         }
         Some(other) => Err(anyhow!(
@@ -84,7 +95,7 @@ fn run() -> Result<()> {
 }
 
 fn print_help() {
-    println!(
+    say!(
         r#"Atelier : widgets et outils du bureau
 
 Sans argument, le programme s'installe dans la zone de notification. S'il

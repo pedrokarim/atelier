@@ -1,6 +1,6 @@
 [package]
 name = "atelier"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Atelier : application de bureau modulaire, à widgets"
 license = "MIT"
@@ -14,14 +14,14 @@ publish = false
 
 [dependencies]
 anyhow = "1.0.104"
-base64 = "0.23.0"
+base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
-dirs = "6.0.0"
+dirs = "7.0.0"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 raw-window-handle = "0.6.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-tray-icon = "0.24.1"
+tray-icon = "0.24.2"
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
