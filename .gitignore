@@ -6,3 +6,9 @@
 *.tmp
 *.log
 .env*
+
+# Environnement Python de l'audit d'interface
+/.venv
+/audit-report
+
+__pycache__/

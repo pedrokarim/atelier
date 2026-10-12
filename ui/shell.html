@@ -147,6 +147,9 @@ body { display: flex; }
 }
 .board-empty-title { font-weight: 650; color: var(--text); font-size: 15px; }
 
+.lab-section + .lab-section { margin-top: 28px; }
+.lab-title { margin: 0 0 12px; font-size: 14px; font-weight: 650; }
+
 /* --- Catalogue de widgets ------------------------------------------------ */
 
 .catalog-group + .catalog-group { margin-top: 18px; }
@@ -291,6 +294,7 @@ async function navigate(route, params) {
 
   if (path === "home") return renderHome(page);
   if (path === "settings") return renderSettings(page);
+  if (path === "lab") return renderLab(page);
 
   const [moduleId, pageId] = path.split("/");
   const module = A.modules.get(moduleId);
@@ -581,6 +585,34 @@ function openCatalog() {
     },
     actions: [{ label: "Fermer", ghost: true }],
   });
+}
+
+/* --- Laboratoire : chaque widget dans chacune de ses tailles ------------ */
+
+/*
+  Page de contrôle, absente du menu (route « lab ») : l'audit de mise en page
+  y vérifie chaque combinaison de widget et de taille.
+*/
+function renderLab(page) {
+  page.innerHTML = pageHead("Laboratoire des widgets",
+    "Chaque widget, dans chacune de ses tailles. Page de contrôle de la mise en page, absente du menu.");
+
+  const labMounts = [];
+  cleanups.push(() => labMounts.forEach((mount) => mount.destroy()));
+
+  for (const widget of A.widgets.values()) {
+    const section = document.createElement("section");
+    section.className = "lab-section";
+    section.innerHTML = `<h2 class="lab-title">${A.escape(widget.title)} <span class="card-sub">${A.escape(widget.id)}</span></h2><div class="board"></div>`;
+    const board = section.querySelector(".board");
+    for (const size of widget.sizes) {
+      const instance = { id: `lab-${widget.id}-${size}`, widget: widget.id, size, settings: {} };
+      const frame = widgetFrame(instance);
+      board.appendChild(frame);
+      labMounts.push(A.mountWidget(frame, instance));
+    }
+    page.appendChild(section);
+  }
 }
 
 /* --- Réglages ------------------------------------------------------------ */

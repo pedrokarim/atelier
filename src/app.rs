@@ -33,6 +33,9 @@ pub const HOST_CLASS: PCWSTR = w!("AtelierHost");
 
 const TIMER_ID: usize = 1;
 
+/// Largeur logique de la notification ; sa hauteur suit son contenu.
+const NOTICE_WIDTH: i32 = 410;
+
 /// Modules accessibles depuis la procédure de fenêtre de l'hôte, pour
 /// l'enregistrement d'urgence à la fermeture de session.
 static MODULES: OnceLock<Vec<Arc<dyn Module>>> = OnceLock::new();
@@ -355,7 +358,7 @@ impl App {
             let spec = Spec {
                 kind: Kind::Notice,
                 title: "Atelier".to_string(),
-                width: 410,
+                width: NOTICE_WIDTH,
                 height: 148,
                 min_width: 0,
                 min_height: 0,
@@ -673,6 +676,25 @@ impl App {
                 Ok(Value::Null)
             }
 
+            // Taille logique de la fenêtre principale : sert à l'audit de mise
+            // en page, qui passe chaque écran à plusieurs largeurs.
+            "window.resize" => {
+                let dimension = |name: &str, min: i64| -> Result<i32> {
+                    let value = params
+                        .get(name)
+                        .and_then(Value::as_i64)
+                        .ok_or_else(|| anyhow!("paramètre manquant : {name}"))?;
+                    Ok(value.clamp(min, 4000) as i32)
+                };
+                let (width, height) = (dimension("width", 860)?, dimension("height", 560)?);
+                let window = self
+                    .main
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("fenêtre principale fermée"))?;
+                window.resize(width, height);
+                Ok(json!({ "width": width, "height": height }))
+            }
+
             "desktop.visible" => {
                 let visible = params
                     .get("visible")
@@ -703,6 +725,51 @@ impl App {
                     module.notice_action(&id, &action);
                 }
                 self.remove_notice(&id);
+                Ok(Value::Null)
+            }
+
+            // Notification d'essai, pour l'audit de mise en page : textes et
+            // compte à rebours fournis par l'appelant.
+            "notice.preview" => {
+                let text = |name: &str, fallback: &str| {
+                    params
+                        .get(name)
+                        .and_then(Value::as_str)
+                        .unwrap_or(fallback)
+                        .to_string()
+                };
+                let notice = Notice {
+                    id: "preview".to_string(),
+                    module: "core".to_string(),
+                    title: text("title", "Notification d'essai"),
+                    body: text("body", "Aperçu de la mise en page des notifications."),
+                    icon: None,
+                    tone: "critical",
+                    countdown: params
+                        .get("countdown")
+                        .and_then(Value::as_u64)
+                        .map(|seconds| seconds as u32),
+                    timeout: None,
+                    actions: vec![
+                        ipc::NoticeAction::new("extend", "+\u{a0}15\u{a0}min", false),
+                        ipc::NoticeAction::new("dismiss", "Fermer maintenant", true),
+                    ],
+                };
+                self.on_host_event(HostEvent::Notice(notice));
+                Ok(Value::Null)
+            }
+
+            // La notification annonce la hauteur de son contenu : la fenêtre
+            // s'y ajuste, toujours ancrée au coin de l'écran.
+            "notice.fit" => {
+                let height = params
+                    .get("height")
+                    .and_then(Value::as_i64)
+                    .ok_or_else(|| anyhow!("paramètre manquant : height"))?
+                    .clamp(80, 480) as i32;
+                if let Some(window) = self.notice.as_mut() {
+                    window.reposition(NOTICE_WIDTH, height, &Placement::BottomRight);
+                }
                 Ok(Value::Null)
             }
 
@@ -876,15 +943,34 @@ fn load_tray_icon() -> Result<tray_icon::Icon> {
         .context("construction de l'icône de la zone de notification")
 }
 
+/// Empreinte du dossier de données : une instance par dossier.
+pub fn instance_identity() -> Result<String> {
+    let directory = paths::data_dir()?.to_string_lossy().to_lowercase();
+    // FNV-1a : stable d'une version de Rust à l'autre, contrairement au
+    // hachage de la bibliothèque standard.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in directory.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    Ok(format!("{hash:016x}"))
+}
+
+/// Titre de la fenêtre hôte, par lequel une seconde instance la retrouve.
+pub fn host_title(identity: &str) -> String {
+    format!("Atelier {identity}")
+}
+
 fn create_host_window() -> Result<HWND> {
     webview::register_class(HOST_CLASS, Some(host_proc))?;
     let instance = unsafe { GetModuleHandleW(None) }.context("module courant introuvable")?;
+    let title = crate::to_wide(&host_title(&instance_identity()?));
 
     let hwnd = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             HOST_CLASS,
-            w!("Atelier"),
+            PCWSTR(title.as_ptr()),
             WS_OVERLAPPED,
             0,
             0,

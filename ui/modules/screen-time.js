@@ -36,6 +36,54 @@ function appIcon(key, size = "") {
   return `<span class="${cls} placeholder">${T.escape(appName(key).charAt(0).toUpperCase())}</span>`;
 }
 
+/*
+  Nom d'application tronqué si nécessaire, avec le nom complet en infobulle.
+*/
+function nameSpan(key, extra = "") {
+  const name = T.escape(appName(key));
+  return `<span class="name${extra ? ` ${extra}` : ""}" title="${name}">${name}</span>`;
+}
+
+/*
+  Remplit un widget avec autant de lignes que sa hauteur en accueille, puis
+  « et N autres » (sauf `more: false`). Le nombre de lignes n'est jamais fixé à l'avance : il est
+  mesuré, pour qu'aucune ligne ne soit coupée par le bord du widget.
+*/
+function fitRows(el, rows, renderRow, options = {}) {
+  const gap = options.gap === undefined ? "" : ` style="gap:${options.gap}px"`;
+  el.innerHTML = `<div class="w-list"${gap}></div><div class="w-foot"></div>`;
+  const list = el.firstElementChild;
+  const foot = el.lastElementChild;
+  const overflowing = () => el.scrollHeight > el.clientHeight + 0.5;
+  // Sans `more`, pas de mention « et N autres » : un classement s'arrête
+  // simplement à ce qui tient.
+  const more = options.more !== false;
+  const setFoot = (shown) => {
+    const rest = more ? rows.length - shown : 0;
+    foot.hidden = rest <= 0;
+    foot.textContent = rest > 0 ? `et ${rest}${NB}autre${rest > 1 ? "s" : ""}` : "";
+  };
+
+  let shown = 0;
+  for (const row of rows) {
+    list.insertAdjacentHTML("beforeend", renderRow(row));
+    setFoot(shown + 1);
+    if (overflowing()) {
+      list.lastElementChild.remove();
+      break;
+    }
+    shown += 1;
+  }
+  setFoot(shown);
+  // La mention « et N autres » peut elle-même manquer de place.
+  while (shown > 0 && overflowing()) {
+    list.lastElementChild.remove();
+    shown -= 1;
+    setFoot(shown);
+  }
+  return shown;
+}
+
 /* --- Graphiques ---------------------------------------------------------- */
 
 /* Rectangle à extrémité arrondie côté données, carré côté ligne de base. */
@@ -59,13 +107,56 @@ function tickLabel(seconds) {
 }
 
 /*
+  Mode « remplir », réservé aux widgets : le graphique prend la hauteur qui
+  reste dans la carte, mesurée en pixels, au lieu d'imposer ses proportions
+  (il débordait sinon sur le texte au-dessus de lui). Il se redessine quand
+  la carte change de taille.
+*/
+const chartObserver = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const target = entry.target;
+    if (!target.isConnected || !target.chartDraw) continue;
+    const width = Math.round(target.clientWidth);
+    const height = Math.round(target.clientHeight);
+    const last = target.chartSize || {};
+    if (width !== last.width || height !== last.height) target.chartDraw();
+  }
+});
+
+/*
   Histogramme en colonnes. `bars` : [{ value, label, tip, onClick, dim }].
-  Une seule série, une seule couleur : le titre de la carte dit ce qui est
-  tracé ; les valeurs exactes passent par l'infobulle.
+  Une seule série, une seule couleur : le titre de la carte dit ce qui est
+  tracé, les valeurs exactes passent par l'infobulle.
+
+  Par défaut, le dessin a des proportions fixes (`width` × `height`) et suit
+  la largeur de la carte. Avec `fit`, il remplit exactement son conteneur.
 */
 function columnChart(container, bars, options = {}) {
-  const width = options.width || 720;
-  const height = options.height || 190;
+  if (!options.fit) {
+    drawColumns(container, bars, options, options.width || 720, options.height || 190);
+    return;
+  }
+
+  container.chartDraw = () => {
+    container.chartSize = {
+      width: Math.round(container.clientWidth),
+      height: Math.round(container.clientHeight),
+    };
+    const { width, height } = container.chartSize;
+    // Trop peu de place pour un graphique lisible : rien plutôt qu'un dessin
+    // écrasé.
+    if (width < 40 || height < 28) {
+      container.innerHTML = "";
+      return;
+    }
+    // Sous 70 px, les étiquettes de l'axe mangeraient le dessin.
+    drawColumns(container, bars, { ...options, labels: options.labels !== false && height >= 70 }, width, height, true);
+  };
+  chartObserver.observe(container);
+  container.chartDraw();
+}
+
+function drawColumns(container, bars, options, width, height, pixels = false) {
   const padLeft = options.axis === false ? 0 : 40;
   const padBottom = options.labels === false ? 4 : 22;
   const padTop = 10;
@@ -76,7 +167,9 @@ function columnChart(container, bars, options = {}) {
   const barWidth = Math.min(24, Math.max(3, slot - 2 - Math.min(10, slot * 0.28)));
   const y = (value) => padTop + plotHeight - (value / max) * plotHeight;
 
-  let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${T.escape(options.label || "")}">`;
+  // En mode « remplir », le dessin a exactement la taille du conteneur.
+  const size = pixels ? ` width="${width}" height="${height}"` : "";
+  let svg = `<svg viewBox="0 0 ${width} ${height}"${size} role="img" aria-label="${T.escape(options.label || "")}">`;
 
   if (options.axis !== false) {
     for (const fraction of [0.5, 1]) {
@@ -104,6 +197,9 @@ function columnChart(container, bars, options = {}) {
 
   if (options.reference) {
     const ry = y(options.reference);
+    // La moyenne est une information : tracée par-dessus les barres, opaque,
+    // détachée d'elles par un liseré de la couleur du fond.
+    svg += `<line class="reference-halo" x1="${padLeft}" x2="${width}" y1="${ry}" y2="${ry}"/>`;
     svg += `<line class="reference" x1="${padLeft}" x2="${width}" y1="${ry}" y2="${ry}"/>`;
     svg += `<text class="reference-label" x="${width}" y="${ry - 5}" text-anchor="end">${T.escape(options.referenceLabel || "")}</text>`;
   }
@@ -119,7 +215,7 @@ function columnChart(container, bars, options = {}) {
 }
 
 /*
-  Chronologie : une ligne par application, l'axe des heures en abscisse.
+  Chronologie : une ligne par application, l'axe des heures en abscisse.
   « Ouvert » en voile léger, « au premier plan » en plein.
 */
 function timeline(container, day, keys, options = {}) {
@@ -158,9 +254,11 @@ function timeline(container, day, keys, options = {}) {
 
   svg += "</svg>";
 
+  // `min-width: 0` permet au nom de se tronquer ; le nom complet est en
+  // infobulle.
   const labels = keys.map((key, row) => `
-    <div style="position:absolute;left:0;top:calc(${(row * rowHeight + rowHeight / 2) / height * 100}% - 11px);width:${labelWidth / width * 100}%;display:flex;align-items:center;gap:8px;padding-right:12px">
-      ${appIcon(key)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${T.escape(appName(key))}</span>
+    <div style="position:absolute;left:0;top:calc(${(row * rowHeight + rowHeight / 2) / height * 100}% - 11px);width:${labelWidth / width * 100}%;display:flex;align-items:center;gap:8px;padding-right:12px" title="${T.escape(appName(key))}">
+      ${appIcon(key)}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${T.escape(appName(key))}</span>
     </div>`).join("");
 
   container.innerHTML = `<div class="chart" style="position:relative">${svg}${labels}</div>`;
@@ -183,7 +281,7 @@ function ranking(container, rows, options = {}) {
   container.innerHTML = `<div class="rank">${rows.map((row, index) => `
     <div class="rank-row${options.onClick ? " clickable" : ""}" data-index="${index}">
       ${appIcon(row.key)}
-      <div class="rank-name">${T.escape(appName(row.key))}${row.note ? `<small>${row.note}</small>` : ""}</div>
+      <div class="rank-name" title="${T.escape(appName(row.key))}">${T.escape(appName(row.key))}${row.note ? `<small>${row.note}</small>` : ""}</div>
       <div class="rank-track">${row.value > 0 ? `<div class="rank-bar" style="width:${(row.value / max) * 100}%"></div>` : ""}</div>
       <div class="rank-value">${T.duration(row.value)}</div>
     </div>`).join("")}</div>`;
@@ -275,7 +373,7 @@ async function renderDay(root, ctx) {
           </div>
           <div>
             <div class="stat-label">Application la plus utilisée</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:6px">${top ? `${appIcon(top.key, "md")}<div style="min-width:0"><div style="font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${T.escape(appName(top.key))}</div><div class="stat-note">${T.duration(top.active)}</div></div>` : `<div class="stat-note">${T.none}</div>`}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:6px">${top ? `${appIcon(top.key, "md")}<div style="min-width:0;flex:1">${nameSpan(top.key, "strong block")}<div class="stat-note">${T.duration(top.active)}</div></div>` : `<div class="stat-note">${T.none}</div>`}</div>
           </div>
           <div>
             <div class="stat-label">Lancements</div>
@@ -455,7 +553,7 @@ async function renderApps(root, ctx) {
     { id: "today", label: "Aujourd’hui" },
     { id: "week", label: "7 derniers jours" },
     { id: "total", label: "Total" },
-    { id: "open", label: "Ouvert (total)" },
+    { id: "open", label: "Ouvert (total)", optional: true },
     { id: "lastUsed", label: "Dernière utilisation" },
   ];
 
@@ -471,19 +569,21 @@ async function renderApps(root, ctx) {
 
     const cell = "padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2)";
     root.querySelector("#table").innerHTML = list.length ? `
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <table class="apps-table">
         <thead><tr>${columns.map((column) => `
-          <th data-sort="${column.id}" style="padding:9px 12px;text-align:${column.id === "name" ? "left" : "right"};font-size:11.5px;font-weight:650;color:${sort === column.id ? "var(--text)" : "var(--muted)"};cursor:pointer;white-space:nowrap">${column.label}${sort === column.id ? T.icon("arrowDown", 12, 'style="display:inline;vertical-align:-1px;margin-left:4px"') : ""}</th>`).join("")}</tr></thead>
+          <th data-sort="${column.id}"${column.optional ? ' class="optional"' : ""} style="padding:9px 12px;text-align:${column.id === "name" ? "left" : "right"};font-size:11.5px;font-weight:650;color:${sort === column.id ? "var(--text)" : "var(--muted)"};cursor:pointer;white-space:nowrap">${column.label}${sort === column.id ? T.icon("arrowDown", 12, 'style="display:inline;vertical-align:-1px;margin-left:4px"') : ""}</th>`).join("")}</tr></thead>
         <tbody>${list.map((app) => `
           <tr data-key="${T.escape(app.key)}" style="cursor:pointer;border-top:1px solid var(--border)">
-            <td style="padding:8px 12px"><div style="display:flex;align-items:center;gap:10px;min-width:0">${appIcon(app.key)}<span style="font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${T.escape(appName(app.key))}</span>${catalog.apps[app.key] && catalog.apps[app.key].hidden ? `<span class="badge">masquée</span>` : ""}</div></td>
-            <td style="${cell}">${app.today ? T.duration(app.today) : T.none}</td>
-            <td style="${cell}">${app.week ? T.duration(app.week) : T.none}</td>
-            <td style="${cell};color:var(--text);font-weight:600">${app.total ? T.duration(app.total) : T.none}</td>
-            <td style="${cell}">${app.open ? T.duration(app.open) : T.none}</td>
-            <td style="${cell}">${app.lastUsed ? T.dateLabel(app.lastUsed, "short") : T.none}</td>
+            <td style="padding:8px 12px"><div style="display:flex;align-items:center;gap:10px;min-width:0">${appIcon(app.key)}${nameSpan(app.key, "medium")}${catalog.apps[app.key] && catalog.apps[app.key].hidden ? `<span class="badge">masquée</span>` : ""}</div></td>
+            <td style="${cell}" title="${app.today ? T.duration(app.today) : ""}">${app.today ? T.duration(app.today) : T.none}</td>
+            <td style="${cell}" title="${app.week ? T.duration(app.week) : ""}">${app.week ? T.duration(app.week) : T.none}</td>
+            <td style="${cell};color:var(--text);font-weight:600" title="${app.total ? T.duration(app.total) : ""}">${app.total ? T.duration(app.total) : T.none}</td>
+            <td class="optional" style="${cell}" title="${app.open ? T.duration(app.open) : ""}">${app.open ? T.duration(app.open) : T.none}</td>
+            <td style="${cell}" title="${app.lastUsed ? T.dateLabel(app.lastUsed, "short") : ""}">${app.lastUsed ? T.dateLabel(app.lastUsed, "short") : T.none}</td>
           </tr>`).join("")}</tbody>
       </table>` : `<div class="empty">${T.icon("search", 26)}Aucune application ne correspond.</div>`;
+
+    fitTable(root.querySelector("#table"));
 
     root.querySelectorAll("th[data-sort]").forEach((th) =>
       th.addEventListener("click", () => { sort = th.dataset.sort; draw(); }));
@@ -508,6 +608,27 @@ async function renderApps(root, ctx) {
 
 /* --- Page : fiche d'une application ------------------------------------- */
 
+/*
+  Le tableau garde sa mise en page naturelle tant qu'il tient dans sa carte.
+  S'il ne tient pas (fenêtre étroite, noms très longs), il passe en colonnes
+  réparties : en-têtes sur deux lignes, noms tronqués avec infobulle. Le test
+  est refait quand la carte change de largeur.
+*/
+const tableObserver = new ResizeObserver((entries) => {
+  for (const entry of entries) fitTable(entry.target);
+});
+
+function fitTable(container) {
+  const table = container && container.querySelector("table");
+  if (!table) return;
+  table.classList.remove("compact");
+  if (table.scrollWidth > container.clientWidth + 1) table.classList.add("compact");
+  if (!container.tableObserved) {
+    container.tableObserved = true;
+    tableObserver.observe(container);
+  }
+}
+
 async function renderApp(root, ctx) {
   const key = ctx.params.key;
 
@@ -524,7 +645,7 @@ async function renderApp(root, ctx) {
         <button class="btn btn-icon" id="back" type="button" title="Retour">${T.icon("chevronLeft", 17)}</button>
         ${appIcon(key, "lg")}
         <div class="titles">
-          <h1 class="page-title">${T.escape(appName(key))}</h1>
+          <h1 class="page-title wrap">${T.escape(appName(key))}</h1>
           <p class="page-lede" style="font-family:var(--mono);font-size:11px;color:var(--muted);user-select:text">${T.escape(info.path || key)}</p>
         </div>
         <div class="page-actions">
@@ -767,7 +888,7 @@ async function renderBudgets(root, ctx) {
         <div class="card-head" style="margin-bottom:12px">
           ${appIcon(status.app, "md")}
           <div style="min-width:0;flex:1">
-            <div class="card-title">${T.escape(appName(status.app))}</div>
+            <div class="card-title">${nameSpan(status.app, "block")}</div>
             <div class="card-sub">${T.duration(status.minutes * 60)} par jour, ${metricLabel(status.metric)}${T.sep}${actionLabel(status.action)}</div>
           </div>
           <span class="state ${status.enabled ? status.state : "ok"}">${status.enabled ? stateLabel(status.state) : "En pause"}</span>
@@ -907,7 +1028,7 @@ T.module({
       const key = live.foreground;
       root.innerHTML = `
         <div style="color:var(--muted);font-size:11px;margin-bottom:6px">Aujourd’hui${T.sep}<b style="color:var(--text)">${T.duration(live.total)}</b></div>
-        ${key ? `<div style="display:flex;align-items:center;gap:8px;min-width:0">${appIcon(key)}<div style="min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${T.escape(appName(key))}</div>
+        ${key ? `<div style="display:flex;align-items:center;gap:8px;min-width:0">${appIcon(key)}<div style="min-width:0;flex:1">${nameSpan(key, "semibold block")}
           <div style="color:var(--muted);font-size:11px">${live.idle ? "en pause (absence)" : `${T.duration(live.foregroundToday)} aujourd’hui`}</div></div></div>` : `<div style="color:var(--muted)">Aucune application au premier plan</div>`}`;
     },
   },
@@ -943,7 +1064,7 @@ T.widget({
       <div style="display:flex;align-items:flex-end;gap:14px">
         <div><div class="w-hero">${T.durationHtml(day.total)}</div><div class="w-sub">${deltaHtml}</div></div>
       </div>
-      <div class="w-fill" id="hours" style="margin-top:10px;display:flex;align-items:flex-end"></div>
+      <div class="w-fill" id="hours" style="margin-top:10px"></div>
       ${showTop ? '<div id="top" class="w-list" style="margin-top:12px"></div>' : ""}`;
 
     const currentHour = new Date().getHours();
@@ -952,13 +1073,13 @@ T.widget({
       dim: hour > currentHour,
       label: hour % 6 === 0 ? `${hour}${NB}h` : "",
       tip: `<div class="tooltip-title">${hourLabel(hour)}</div><div class="tooltip-row"><span class="grow">Temps d’écran</span><b>${T.duration(value)}</b></div>`,
-    })), { width: ctx.size === "w" ? 700 : 340, height: ctx.size === "l" ? 150 : 74, axis: false, label: "Temps d’écran par heure" });
+    })), { fit: true, axis: false, label: "Temps d’écran par heure" });
 
     if (showTop) {
       const top = day.apps.filter((app) => app.active > 0).slice(0, 4);
       const max = Math.max(1, ...top.map((app) => app.active));
       el.querySelector("#top").innerHTML = top.map((app) => `
-        <div class="w-row">${appIcon(app.key)}<span class="name">${T.escape(appName(app.key))}</span><span class="value">${T.duration(app.active)}</span>
+        <div class="w-row">${appIcon(app.key)}${nameSpan(app.key)}<span class="value">${T.duration(app.active)}</span>
         <span></span><div class="bar" style="width:${(app.active / max) * 100}%"></div></div>`).join("");
     }
   },
@@ -987,16 +1108,16 @@ T.widget({
 
     if (ctx.size === "s") {
       el.innerHTML = `
-        <div style="display:flex;align-items:center;gap:9px">${appIcon(key, "md")}<div style="font-weight:650;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${T.escape(appName(key))}</div></div>
-        <div class="w-hero" style="font-size:30px;margin-top:14px">${live.idle ? T.none : T.durationHtml(since)}</div>
+        <div class="w-app">${appIcon(key, "md")}${nameSpan(key, "strong")}</div>
+        <div class="w-hero" style="font-size:30px;margin-top:8px">${live.idle ? T.none : T.durationHtml(since)}</div>
         <div class="w-sub">${live.idle ? "Absence détectée" : "sans interruption"}</div>
-        <div class="w-foot">${T.duration(live.foregroundToday)} aujourd’hui</div>`;
+        <div class="w-foot" style="padding-top:6px">${T.duration(live.foregroundToday)} aujourd’hui</div>`;
       return;
     }
 
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px">${appIcon(key, "lg")}
-        <div style="min-width:0"><div style="font-weight:650;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${T.escape(appName(key))}</div>
+        <div style="min-width:0;flex:1">${nameSpan(key, "strong large")}
         <div class="w-sub" style="margin-top:2px">${live.idle ? '<span class="badge">absence détectée</span>' : '<span class="badge live">au premier plan</span>'}</div></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:auto">
@@ -1021,17 +1142,14 @@ T.widget({
     const running = Object.entries(live.running)
       .filter(([key]) => !(catalog.apps[key] && catalog.apps[key].hidden))
       .sort((a, b) => (a[1] || Infinity) - (b[1] || Infinity));
-    const limit = ctx.size === "l" ? 9 : 3;
-
     if (!running.length) {
       el.innerHTML = `<div class="empty">${T.icon("monitor", 24)}Aucune application lancée</div>`;
       return;
     }
 
-    el.innerHTML = `<div class="w-list">${running.slice(0, limit).map(([key, started]) => `
-      <div class="w-row">${appIcon(key)}<span class="name">${T.escape(appName(key))}${key === live.foreground ? ` <span class="badge live" style="height:16px;font-size:10px">actif</span>` : ""}</span>
-      <span class="value">${started ? sinceText(started) : T.none}</span></div>`).join("")}</div>
-      ${running.length > limit ? `<div class="w-foot">et ${running.length - limit}${NB}autre${running.length - limit > 1 ? "s" : ""}</div>` : ""}`;
+    fitRows(el, running, ([key, started]) => `
+      <div class="w-row">${appIcon(key)}<span class="name-cell">${nameSpan(key)}${key === live.foreground ? '<span class="badge live mini">actif</span>' : ""}</span>
+      <span class="value">${started ? sinceText(started) : T.none}</span></div>`);
   },
 });
 
@@ -1047,15 +1165,15 @@ T.widget({
   async render(el, ctx) {
     const day = await ctx.request("day");
     await ensureCatalog(ctx.request, day.catalogVersion);
-    const apps = day.apps.filter((app) => app.active > 0).slice(0, ctx.size === "l" ? 8 : 3);
+    const apps = day.apps.filter((app) => app.active > 0);
     if (!apps.length) {
       el.innerHTML = `<div class="empty">${T.icon("apps", 24)}Rien pour l’instant aujourd’hui</div>`;
       return;
     }
     const max = Math.max(1, ...apps.map((app) => app.active));
-    el.innerHTML = `<div class="w-list" style="gap:${ctx.size === "l" ? 11 : 8}px">${apps.map((app) => `
-      <div class="w-row">${appIcon(app.key)}<span class="name">${T.escape(appName(app.key))}</span><span class="value">${T.duration(app.active)}</span>
-      <span></span><div class="bar" style="width:${(app.active / max) * 100}%"></div></div>`).join("")}</div>`;
+    fitRows(el, apps, (app) => `
+      <div class="w-row">${appIcon(app.key)}${nameSpan(app.key)}<span class="value">${T.duration(app.active)}</span>
+      <span></span><div class="bar" style="width:${(app.active / max) * 100}%"></div></div>`, { gap: ctx.size === "l" ? 11 : 8, more: false });
   },
 });
 
@@ -1075,14 +1193,13 @@ T.widget({
         <div class="w-hero" style="font-size:28px">${T.durationHtml(range.average)}</div>
         <div class="w-sub" style="margin:0">par jour en moyenne</div>
       </div>
-      <div class="w-fill" id="days" style="margin-top:8px;display:flex;align-items:flex-end"></div>`;
+      <div class="w-fill" id="days" style="margin-top:8px"></div>`;
     columnChart(el.querySelector("#days"), range.days.map((day) => ({
       value: day.total,
       label: T.capitalize(T.dateLabel(day.date, "weekday")).replace(".", ""),
       tip: `<div class="tooltip-title">${T.capitalize(T.dateLabel(day.date))}</div><div class="tooltip-row"><span class="grow">Temps d’écran</span><b>${T.duration(day.total)}</b></div>`,
     })), {
-      width: ctx.size === "w" ? 700 : 340,
-      height: ctx.size === "l" ? 250 : 96,
+      fit: true,
       axis: false,
       reference: range.average,
       label: "Temps d’écran des sept derniers jours",
@@ -1113,23 +1230,21 @@ T.widget({
       const worst = budgets.slice().sort((a, b) => b.used / b.limit - a.used / a.limit)[0];
       const remaining = Math.max(0, worst.limit - worst.used);
       el.innerHTML = `
-        <div style="display:flex;align-items:center;gap:8px">${appIcon(worst.app)}<span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${T.escape(appName(worst.app))}</span></div>
+        <div class="w-app">${appIcon(worst.app)}${nameSpan(worst.app, "strong")}</div>
         <div class="w-hero" style="font-size:30px;margin-top:12px">${T.durationHtml(worst.state === "over" ? worst.used - worst.limit : remaining)}</div>
         <div class="w-sub"><span class="state ${worst.state}">${worst.state === "over" ? "de dépassement" : "restant"}</span></div>
         <div class="w-foot">${budgetMeter(worst)}</div>`;
       return;
     }
 
-    const limit = ctx.size === "l" ? 6 : 2;
-    el.innerHTML = `<div style="display:grid;gap:12px">${budgets.slice(0, limit).map((budget) => `
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12.5px">
-          ${appIcon(budget.app)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:550">${T.escape(appName(budget.app))}</span>
-          <span class="num" style="color:var(--text-2)">${T.duration(budget.used)} / ${T.duration(budget.limit)}</span>
+    fitRows(el, budgets, (budget) => `
+      <div class="w-budget">
+        <div class="w-budget-head">
+          ${appIcon(budget.app)}${nameSpan(budget.app)}
+          <span class="value">${T.duration(budget.used)} / ${T.duration(budget.limit)}</span>
         </div>
         ${budgetMeter(budget)}
-        <div class="state ${budget.state}" style="margin-top:4px">${stateLabel(budget.state)}</div>
-      </div>`).join("")}</div>
-      ${budgets.length > limit ? `<div class="w-foot">et ${budgets.length - limit}${NB}autre${budgets.length - limit > 1 ? "s" : ""}</div>` : ""}`;
+        <div class="state ${budget.state}">${stateLabel(budget.state)}</div>
+      </div>`, { gap: 12, more: false });
   },
 });

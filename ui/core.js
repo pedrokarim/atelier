@@ -448,6 +448,7 @@ const Atelier = (() => {
     }
 
     title.textContent = definition.title;
+    title.title = definition.title;
     const head = frame.querySelector(".widget-head");
     head.querySelector(".widget-glyph")?.remove();
     head.insertAdjacentHTML("afterbegin",
@@ -504,6 +505,161 @@ const Atelier = (() => {
     return query ? `${route}?${query}` : route;
   }
 
+  /* --- Audit d'intégrité de la mise en page ------------------------------ */
+
+  /*
+    Mesure la page rendue et renvoie la liste des défauts visibles :
+    défilement horizontal, élément qui sort de son conteneur ou que son cadre
+    rogne, blocs voisins qui se chevauchent, texte coupé net ou tronqué sans
+    infobulle, fenêtre flottante qui sort de l'écran.
+
+    Utilisé par `scripts/audit/audit.py`, et appelable à la main depuis les
+    outils de développement : `Atelier.audit()`.
+  */
+  function audit(root = document.body) {
+    const TOLERANCE = 1;
+    const issues = [];
+
+    const describe = (element) => {
+      const parts = [];
+      for (let node = element; node && node !== document.body && parts.length < 4; node = node.parentElement) {
+        let part = node.tagName.toLowerCase();
+        if (node.id) part += `#${node.id}`;
+        const classes = [...node.classList].slice(0, 2);
+        if (classes.length) part += `.${classes.join(".")}`;
+        parts.unshift(part);
+      }
+      const text = (element.textContent || "").trim().replace(/\s+/g, " ").slice(0, 60);
+      return text ? `${parts.join(" > ")} « ${text} »` : parts.join(" > ");
+    };
+
+    const rectOf = (element) => {
+      const r = element.getBoundingClientRect();
+      return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+
+    const add = (kind, element, detail, other) => {
+      // Un seul signalement par élément et par nature : les descendants d'un
+      // élément déjà signalé héritent du même défaut.
+      for (let node = element.parentElement; node; node = node.parentElement) {
+        if (node.auditFlag === kind) return;
+      }
+      element.auditFlag = kind;
+      issues.push({
+        kind,
+        element: describe(element),
+        rect: rectOf(element),
+        detail,
+        other: other ? describe(other) : undefined,
+      });
+    };
+
+    const isVisible = (element) => {
+      const style = getComputedStyle(element);
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+      const r = element.getBoundingClientRect();
+      return r.width > 0.5 && r.height > 0.5;
+    };
+
+    // Les dessins SVG ont leur propre géométrie ; les infobulles et menus
+    // flottent volontairement par-dessus le reste.
+    const skip = (element) =>
+      (element.closest("svg") && element.tagName.toLowerCase() !== "svg") ||
+      element.closest(".tooltip:not(.visible)");
+
+    const floating = (element) => ["absolute", "fixed"].includes(getComputedStyle(element).position);
+
+    for (const node of document.querySelectorAll("*")) node.auditFlag = undefined;
+
+    // 1. Défilement horizontal de la page.
+    const page = document.scrollingElement || document.documentElement;
+    if (page.scrollWidth > page.clientWidth + TOLERANCE) {
+      issues.push({ kind: "défilement horizontal", element: "page", detail: `${page.scrollWidth} px de contenu pour ${page.clientWidth} px de fenêtre` });
+    }
+
+    const elements = [...root.querySelectorAll("*")].filter((element) => !skip(element) && isVisible(element));
+
+    for (const element of elements) {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      const parent = element.parentElement;
+
+      // 2. Sortie du conteneur direct (flux normal uniquement).
+      const bleeds = style.getPropertyValue("--audit-bleed").trim() === "1";
+      if (parent && parent !== document.documentElement && !floating(element) && style.display !== "contents" && !bleeds) {
+        const outer = parent.getBoundingClientRect();
+        const parentStyle = getComputedStyle(parent);
+        const scrollsX = ["auto", "scroll"].includes(parentStyle.overflowX);
+        const scrollsY = ["auto", "scroll"].includes(parentStyle.overflowY);
+        const overX = !scrollsX && (box.left < outer.left - TOLERANCE || box.right > outer.right + TOLERANCE);
+        const overY = !scrollsY && (box.top < outer.top - TOLERANCE || box.bottom > outer.bottom + TOLERANCE);
+        if (overX || overY) {
+          const dx = Math.max(outer.left - box.left, box.right - outer.right, 0);
+          const dy = Math.max(outer.top - box.top, box.bottom - outer.bottom, 0);
+          add("sort de son conteneur", element, `dépasse de ${Math.round(Math.max(dx, dy))} px`, parent);
+        }
+      }
+
+      // 3. Contenu rogné par un ancêtre qui masque ce qui dépasse.
+      for (let ancestor = parent; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+        const ancestorStyle = getComputedStyle(ancestor);
+        const clipX = ["hidden", "clip"].includes(ancestorStyle.overflowX);
+        const clipY = ["hidden", "clip"].includes(ancestorStyle.overflowY);
+        if (!clipX && !clipY && ancestorStyle.overflowX === "visible" && ancestorStyle.overflowY === "visible") continue;
+        const frame = ancestor.getBoundingClientRect();
+        const cutX = clipX && (box.left < frame.left - TOLERANCE || box.right > frame.right + TOLERANCE);
+        const cutY = clipY && (box.top < frame.top - TOLERANCE || box.bottom > frame.bottom + TOLERANCE);
+        if (cutX || cutY) add("rogné par son cadre", element, "une partie n'est pas visible", ancestor);
+        break;
+      }
+
+      // 4. Texte coupé net, ou tronqué sans le texte complet en infobulle.
+      if (element.scrollWidth > element.clientWidth + TOLERANCE && style.overflowX !== "visible" && element.children.length === 0) {
+        if (style.textOverflow === "ellipsis") {
+          if (!element.closest("[title]")) add("tronqué sans infobulle", element, "le texte complet n'est lisible nulle part");
+        } else if (!["auto", "scroll"].includes(style.overflowX)) {
+          add("texte coupé", element, `${element.scrollWidth} px de texte pour ${element.clientWidth} px`);
+        }
+      }
+
+      // 5. Blocs voisins qui se chevauchent.
+      const children = [...element.children].filter((child) => !skip(child) && !floating(child) && isVisible(child));
+      if (children.length >= 2 && children.length <= 120) {
+        // Un élément en ligne qui passe à la ligne a un rectangle englobant
+        // trompeur : on compare ses lignes une à une.
+        const boxes = children.map((child) =>
+          getComputedStyle(child).display === "inline" ? [...child.getClientRects()] : [child.getBoundingClientRect()]);
+        for (let i = 0; i < children.length; i++) {
+          for (let j = i + 1; j < children.length; j++) {
+            let worst = null;
+            for (const a of boxes[i]) {
+              for (const b of boxes[j]) {
+                const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+                const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+                if (overlapX > TOLERANCE && overlapY > TOLERANCE) worst = [overlapX, overlapY];
+              }
+            }
+            if (worst) {
+              add("chevauchement", children[j], `recouvre ${Math.round(worst[0])} × ${Math.round(worst[1])} px`, children[i]);
+            }
+          }
+        }
+      }
+    }
+
+    // 6. Fenêtres flottantes ouvertes : entièrement à l'écran.
+    for (const element of document.querySelectorAll(".popover, .modal, .toast, .tooltip.visible")) {
+      if (!isVisible(element)) continue;
+      const r = element.getBoundingClientRect();
+      if (r.left < -TOLERANCE || r.top < -TOLERANCE || r.right > innerWidth + TOLERANCE || r.bottom > innerHeight + TOLERANCE) {
+        add("hors de l'écran", element, `${Math.round(r.right)} × ${Math.round(r.bottom)} pour une fenêtre de ${innerWidth} × ${innerHeight}`);
+      }
+    }
+
+    for (const node of document.querySelectorAll("*")) node.auditFlag = undefined;
+    return issues;
+  }
+
   function setTheme(dark) {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     emit("theme", dark);
@@ -545,6 +701,7 @@ const Atelier = (() => {
     confirm,
     toast,
     mountWidget,
+    audit,
     routeString,
     setTheme,
     NBSP,

@@ -93,6 +93,17 @@
   --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 10px 30px rgb(0 0 0 / 40%);
 }
 
+/*
+  Débordement voulu (fond de survol qui s'étend, bouton plaqué dans un coin) :
+  l'élément déclare --audit-bleed: 1 et l'audit de mise en page ne le signale
+  pas. La propriété ne s'hérite pas : ses enfants restent contrôlés.
+*/
+@property --audit-bleed {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -343,9 +354,13 @@ select.input { cursor: pointer; }
 .card-sub { color: var(--muted); font-size: 12px; }
 .card-head .spacer { flex: 1; }
 
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.stack { display: grid; gap: 14px; }
+/* Colonnes en minmax(0, 1fr) : sans cela, une colonne prend au moins la
+   largeur complète de son contenu (un nom tronqué compte pour sa longueur
+   entière) et sort de son conteneur. */
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.card { min-width: 0; }
 
 /* Chiffres */
 .stat-label { font-size: 12px; color: var(--text-2); }
@@ -420,6 +435,7 @@ select.input { cursor: pointer; }
   gap: 12px;
   padding: 7px 8px;
   margin: 0 -8px;
+  --audit-bleed: 1;
   border-radius: var(--radius-sm);
 }
 .rank-row.clickable { cursor: pointer; }
@@ -506,7 +522,8 @@ select.input { cursor: pointer; }
 .chart .hit { fill: transparent; cursor: default; }
 .chart .hit.clickable { cursor: pointer; }
 .chart .slot:hover .mark { fill: var(--accent-strong); }
-.chart .reference { stroke: var(--text-2); stroke-width: 1; stroke-opacity: 0.55; }
+.chart .reference-halo { stroke: var(--surface); stroke-width: 4; }
+.chart .reference { stroke: var(--text); stroke-width: 1.5; }
 .chart .reference-label {
   fill: var(--text-2);
   font-size: 10.5px;
@@ -599,6 +616,44 @@ select.input { cursor: pointer; }
 .w-row .value { color: var(--text-2); font-variant-numeric: tabular-nums; }
 .w-row .bar { grid-column: 2 / 4; height: 4px; border-radius: 0 3px 3px 0; background: var(--accent); margin-top: -4px; }
 
+/* Noms d'application : tronqués sur une ligne, nom complet en infobulle. */
+.name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.name.block { display: block; }
+.name.strong { font-weight: 650; }
+.name.medium { font-weight: 550; }
+.name.semibold { font-weight: 600; }
+.name.large { font-size: 15px; }
+.wrap { overflow-wrap: anywhere; }
+
+/* Zone d'un widget qui prend la hauteur restante, sans jamais la dépasser. */
+.w-fill { flex: 1 1 0; min-height: 0; overflow: hidden; }
+.w-app { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.w-app .name { flex: 1; }
+.w-list { min-width: 0; }
+.w-row > .name, .name-cell { min-width: 0; }
+.name-cell { display: flex; align-items: center; gap: 4px; }
+.name-cell .name { flex: 0 1 auto; }
+.badge.mini { height: 16px; font-size: 10px; flex: none; }
+.w-budget { min-width: 0; }
+.w-budget-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 6px; font-size: 12.5px; }
+.w-budget .state { margin-top: 4px; }
+.w-budget-head .name { flex: 1; font-weight: 550; }
+.w-budget-head .value { flex: none; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* Tableau des applications : mise en page d'origine. Seule la colonne des
+   noms est plafonnée, pour qu'un nom démesuré ne l'élargisse pas, et la
+   colonne secondaire disparaît quand la fenêtre est étroite. */
+.apps-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.apps-table td:first-child > div { min-width: 0; max-width: 300px; }
+@media (max-width: 999px) {
+  .apps-table .optional { display: none; }
+}
+/* Tableau trop large pour sa carte : colonnes réparties. */
+.apps-table.compact { table-layout: fixed; }
+.apps-table.compact th { white-space: normal !important; vertical-align: bottom; }
+.apps-table.compact th:first-child, .apps-table.compact td:first-child { width: 34%; }
+.apps-table.compact td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apps-table.compact td:first-child > div { max-width: none; }
 /* --- Menus contextuels --------------------------------------------------- */
 
 .popover {

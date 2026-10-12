@@ -320,6 +320,60 @@ dans `atelier.log`. Pour essayer sans toucher à ses vraies données, créer
 | `ui/modules/*.js` | Moitié page de chaque module |
 | `installer/atelier.iss` | Installateur Inno Setup |
 | `scripts/make-icon.ps1` | Génère l'icône |
+| `scripts/audit/` | Audit de mise en page (voir ci-dessous) |
+
+### Audit de mise en page
+
+Aucun élément ne doit sortir de son cadre, en recouvrir un autre ou être
+coupé. L'audit le vérifie sur le vrai programme : il le lance en mode
+portable, s'y branche avec [Playwright](https://playwright.dev/python/) par
+le port de débogage de WebView2, et mesure chaque écran dans la page
+(`Atelier.audit()`).
+
+| Ce qui est passé en revue | Valeurs |
+| --- | --- |
+| Écrans | chaque page, les boîtes de dialogue, le laboratoire des widgets (route `lab` : chaque widget dans chacune de ses tailles), les widgets du bureau, la notification |
+| Thèmes | sombre et clair |
+| Largeurs de fenêtre | 1920, 1440, 1280, 1024 et 860 pixels (le minimum de la fenêtre) |
+| Données | vides, normales, extrêmes (noms très longs, 45 applications, budgets dépassés) |
+
+| Ce qui est signalé | |
+| --- | --- |
+| Sort de son conteneur | un élément dépasse du bloc qui le contient |
+| Rogné par son cadre | un cadre qui masque ce qui dépasse en cache une partie |
+| Chevauchement | deux blocs voisins se recouvrent |
+| Texte coupé, tronqué sans infobulle | un texte est coupé net, ou tronqué sans que le texte complet soit lisible au survol |
+| Défilement horizontal, hors de l'écran | la page défile en largeur, ou un menu sort de la fenêtre |
+
+```sh
+cargo build --release
+python -m venv .venv
+.venv\Scripts\python -m pip install -r scripts\audit\requirements.txt
+.venv\Scripts\python scripts\audit\audit.py
+# ou plus ciblé :
+.venv\Scripts\python scripts\audit\audit.py --scenario extreme --theme clair --size 1024x768
+```
+
+Le rapport `audit-report/<date>/index.html` montre chaque écran, sa capture et
+ses défauts. Le code de sortie vaut 1 s'il en reste un. Playwright se branche
+sur le WebView2 du programme : aucun navigateur n'est téléchargé.
+
+### Comparaison visuelle
+
+Avant de publier une modification d'interface, on compare la nouvelle
+version à la précédente : `compare.py` lance les deux exécutables sur des
+données identiques, capture les mêmes écrans dans les mêmes conditions et
+mesure la différence pixel à pixel. Le rapport montre chaque écran avant,
+après, et les zones qui ont changé en rouge. Tout écart qui n'est pas une
+correction voulue est une régression.
+
+```sh
+.venv\Scripts\python scripts\audit\compare.py --before <atelier.exe de la version précédente>
+```
+
+Un débordement voulu (fond de survol qui s'étend, bouton plaqué dans un coin)
+se déclare en CSS par `--audit-bleed: 1` : l'audit ne le signale pas, et le
+dessin n'a pas à changer pour lui plaire.
 
 ### Intégration continue et publication
 

@@ -7,15 +7,15 @@
 <style>/*@core.css*/</style>
 <style>
 body { background: var(--surface); }
+/* La notification a la hauteur de son contenu, et la fenêtre s'y ajuste :
+   le texte ne peut plus descendre sur les boutons. */
 .notice {
-  position: fixed;
-  inset: 0;
   display: flex;
   flex-direction: column;
   padding: 14px 16px 14px;
   animation: rise 200ms ease;
 }
-.notice-top { display: flex; gap: 12px; align-items: flex-start; flex: 1; min-height: 0; }
+.notice-top { display: flex; gap: 12px; align-items: flex-start; flex: none; }
 .notice-icon { width: 36px; height: 36px; border-radius: 9px; flex: none; object-fit: contain; }
 .notice-glyph {
   width: 36px;
@@ -30,14 +30,31 @@ body { background: var(--surface); }
 .notice.warning .notice-glyph { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning-text); }
 .notice.critical .notice-glyph { background: color-mix(in srgb, var(--critical) 15%, transparent); color: var(--critical-text); }
 .notice-text { flex: 1; min-width: 0; }
-.notice-title { display: flex; align-items: center; gap: 6px; font-weight: 650; font-size: 13.5px; }
+.notice-title { display: flex; align-items: flex-start; gap: 6px; font-weight: 650; font-size: 13.5px; }
+.notice-title svg { margin-top: 3px; }
+/* Au-delà de 2 lignes de titre ou de 4 lignes de message, le texte est coupé
+   proprement ; le texte complet reste lisible au survol. */
+.notice-title span, .notice-body {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+  /* Un mot sans espace ni tiret passe à la ligne au lieu d'être coupé net. */
+  overflow-wrap: anywhere;
+}
+.notice-title span { -webkit-line-clamp: 2; }
+.notice-body { -webkit-line-clamp: 4; }
 .notice-title svg { flex: none; }
 .notice.warning .notice-title svg { color: var(--warning-text); }
 .notice.critical .notice-title svg { color: var(--critical-text); }
 .notice-body { color: var(--text-2); font-size: 12.5px; margin-top: 2px; }
-.notice-close { margin: -6px -8px 0 0; }
-.notice-bottom { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.notice-bottom .spacer { flex: 1; }
+.notice-close { margin: -6px -8px 0 0; --audit-bleed: 1; }
+/* Écart fixe entre le texte et les boutons ; la rangée passe à la ligne si
+   le compte à rebours et les boutons ne tiennent pas côte à côte. */
+.notice-bottom { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+/* Les boutons forment un groupe : il ne se sépare jamais, et reste aligné à
+   droite s'il passe à la ligne. */
+.notice-actions { display: flex; gap: 8px; margin-left: auto; flex: none; }
 .countdown { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 12.5px; color: var(--critical-text); white-space: nowrap; }
 .notice-bottom .btn { height: 30px; }
 </style>
@@ -60,6 +77,16 @@ function clearTimers() {
   timers = [];
 }
 
+/* Compte à rebours compact : « 45 s », puis « 9:59 », puis « 1:00:00 ». */
+function countdownText(seconds) {
+  if (seconds < 60) return `${seconds}${A.NBSP}s`;
+  const pad = (value) => String(value).padStart(2, "0");
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = seconds % 60;
+  return hours ? `${hours}:${pad(minutes)}:${pad(rest)}` : `${minutes}:${pad(rest)}`;
+}
+
 function render(notice) {
   clearTimers();
   root.className = `notice ${notice.tone}`;
@@ -72,17 +99,17 @@ function render(notice) {
     <div class="notice-top">
       ${visual}
       <div class="notice-text">
-        <div class="notice-title">${notice.icon ? A.icon(toneIcon, 14) : ""}<span>${A.escape(notice.title)}</span></div>
-        <div class="notice-body">${A.escape(notice.body)}</div>
+        <div class="notice-title">${notice.icon ? A.icon(toneIcon, 14) : ""}<span title="${A.escape(notice.title)}">${A.escape(notice.title)}</span></div>
+        <div class="notice-body" title="${A.escape(notice.body)}">${A.escape(notice.body)}</div>
       </div>
       <button class="btn-icon notice-close" type="button" aria-label="Fermer">${A.icon("x", 15)}</button>
     </div>
     <div class="notice-bottom">
       ${notice.countdown ? '<span class="countdown" id="countdown"></span>' : ""}
-      <div class="spacer"></div>
+      <div class="notice-actions"></div>
     </div>`;
 
-  const bottom = root.querySelector(".notice-bottom");
+  const bottom = root.querySelector(".notice-actions");
   for (const action of notice.actions) {
     const button = document.createElement("button");
     button.type = "button";
@@ -102,11 +129,18 @@ function render(notice) {
     const label = document.getElementById("countdown");
     const tick = () => {
       const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
-      label.textContent = left > 0 ? `Fermeture dans ${left}${A.NBSP}s` : "Fermeture…";
+      label.textContent = left > 0 ? `Fermeture dans ${countdownText(left)}` : "Fermeture…";
     };
     tick();
     timers.push(setInterval(tick, 250));
   }
+
+  // La fenêtre prend la hauteur exacte du contenu, ancrée au coin de
+  // l'écran.
+  requestAnimationFrame(() => {
+    const height = Math.ceil(root.getBoundingClientRect().height);
+    A.request("core", "notice.fit", { height });
+  });
 
   if (notice.timeout) {
     const id = notice.id;

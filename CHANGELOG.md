@@ -6,6 +6,36 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Corrigé
+
+- Le graphique du widget « Temps d'écran » recouvrait la variation par
+  rapport à la moyenne : dans les widgets, les graphiques occupent
+  désormais la hauteur qui reste dans la carte, sans la dépasser.
+- La ligne de moyenne des graphiques passe au-dessus des barres et se lit.
+- Le texte des notifications débordait sur leurs boutons : la fenêtre prend
+  désormais la hauteur de son contenu, les boutons restent groupés, et un
+  texte trop long est coupé proprement avec le texte complet au survol.
+- Le widget « Budgets du jour » coupait les noms longs, repoussait les
+  durées hors de la carte et tronquait sa dernière ligne ; les listes des
+  widgets s'arrêtent désormais à ce qui tient.
+- Le widget « En ce moment » débordait de sa carte en petite taille.
+- Une colonne ou une carte ne s'élargit plus au-delà de la fenêtre pour un
+  nom très long : les noms tronqués ont leur nom complet en infobulle.
+- Le tableau des applications ne déborde plus dans une fenêtre étroite : la
+  colonne « Ouvert (total) » s'efface sous 1 000 pixels de large.
+- Une copie portable d'Atelier peut tourner à côté de la version installée :
+  il y a une instance par dossier de données, et non plus une seule en tout.
+
+### Ajouté
+
+- Audit de mise en page (`scripts/audit/audit.py`) : chaque écran, dans les
+  deux thèmes, à cinq largeurs et avec trois jeux de données, mesuré dans la
+  page et capturé.
+- Comparaison visuelle entre deux versions (`scripts/audit/compare.py`) :
+  chaque écran avant et après, avec les zones qui ont changé.
+- Laboratoire des widgets (route `lab`) : chaque widget dans chacune de ses
+  tailles.
+
 ## [0.1.1] - 2026-10-11
 
 ### Corrigé

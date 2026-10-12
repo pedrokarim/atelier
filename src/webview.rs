@@ -348,6 +348,12 @@ impl WebWindow {
         }
     }
 
+    /// Change la taille logique et repositionne la fenêtre.
+    pub fn reposition(&mut self, width: i32, height: i32, placement: &Placement) {
+        self.place(width, height, placement);
+        self.resize_webview();
+    }
+
     /// Change la taille logique sans déplacer la fenêtre.
     pub fn resize(&mut self, width: i32, height: i32) {
         let rect = self.rect();

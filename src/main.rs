@@ -25,7 +25,7 @@ use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::WindowsAndMessaging::{
     ASFW_ANY, AllowSetForegroundWindow, FindWindowW, PostMessageW,
 };
-use windows::core::w;
+use windows::core::PCWSTR;
 
 use crate::logging::log_line;
 
@@ -112,13 +112,17 @@ Options :
     );
 }
 
-/// Une seule instance à la fois : la seconde se contente de réveiller la
-/// première, qui ouvre sa fenêtre.
+/// Une seule instance par dossier de données : la seconde se contente de
+/// réveiller la première, qui ouvre sa fenêtre. Une copie portable, ou une
+/// copie de test, tourne donc à côté de la version installée sans la gêner.
 fn run_resident() -> Result<()> {
-    let _guard = unsafe { CreateMutexW(None, true, w!("Local\\atelier-resident")) };
+    let identity = app::instance_identity()?;
+    let mutex_name = to_wide(&format!("Local\\atelier-resident-{identity}"));
+    let _guard = unsafe { CreateMutexW(None, true, PCWSTR(mutex_name.as_ptr())) };
 
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-        if let Ok(hwnd) = unsafe { FindWindowW(app::HOST_CLASS, None) } {
+        let title = to_wide(&app::host_title(&identity));
+        if let Ok(hwnd) = unsafe { FindWindowW(app::HOST_CLASS, PCWSTR(title.as_ptr())) } {
             unsafe {
                 // Autorise l'instance résidente à passer au premier plan.
                 let _ = AllowSetForegroundWindow(ASFW_ANY);

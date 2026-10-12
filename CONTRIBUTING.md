@@ -25,6 +25,24 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+Toute modification de l'interface passe aussi l'**audit de mise en page**,
+qui doit finir sans aucun défaut (voir le
+[README](README.md#audit-de-mise-en-page)) :
+
+```sh
+cargo build --release
+.venv\Scripts\python scripts\audit\audit.py
+```
+
+Elle est ensuite **comparée à la version précédente**, écran par écran
+(`scripts/audit/compare.py`) : tout écart qui n'est pas une correction
+voulue est une régression, même s'il ne déborde de rien.
+
+Une interface n'est « vérifiée » que si elle l'a été dans les deux thèmes, à
+toutes les largeurs et avec les trois jeux de données. Quand l'audit signale
+un défaut, on corrige la cause (une taille imposée, une colonne de largeur
+fixe, un `min-width: 0` manquant), pas le symptôme.
+
 ## Conventions
 
 | Quoi | Langue |
