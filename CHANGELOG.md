@@ -6,6 +6,8 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [0.1.2] - 2026-10-12
+
 ### Corrigé
 
 - Le graphique du widget « Temps d'écran » recouvrait la variation par
@@ -77,6 +79,7 @@ Première version.
   installation depuis le programme lui-même.
 - Intégration continue et publication automatique sur GitHub Actions.
 
-[Non publié]: https://github.com/pedrokarim/atelier/compare/v0.1.1...HEAD
+[Non publié]: https://github.com/pedrokarim/atelier/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/pedrokarim/atelier/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/pedrokarim/atelier/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/pedrokarim/atelier/releases/tag/v0.1.0
