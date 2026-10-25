@@ -6,6 +6,14 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Corrigé
+
+- Une notification dont le texte passait à la ligne après le chargement de la
+  police coupait ses boutons : la fenêtre suit désormais la hauteur de son
+  contenu à chaque changement.
+- Les notifications du module Système portent leur propre pictogramme
+  (mémoire, alerte) au lieu du sablier des budgets.
+
 ## [0.2.0] - 2026-10-25
 
 ### Ajouté

@@ -744,6 +744,7 @@ impl App {
                     title: text("title", "Notification d'essai"),
                     body: text("body", "Aperçu de la mise en page des notifications."),
                     icon: None,
+                    glyph: None,
                     tone: "critical",
                     countdown: params
                         .get("countdown")

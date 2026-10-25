@@ -473,6 +473,7 @@ impl Tracker {
                             format_duration(remaining)
                         ),
                         icon,
+                        glyph: None,
                         tone: "warning",
                         countdown: None,
                         timeout: Some(15),
@@ -501,6 +502,7 @@ impl Tracker {
                                 format_duration(limit)
                             ),
                             icon,
+                            glyph: None,
                             tone: "critical",
                             countdown: None,
                             timeout: Some(30),
@@ -520,6 +522,7 @@ impl Tracker {
                                 format_duration(used - limit)
                             ),
                             icon,
+                            glyph: None,
                             tone: "critical",
                             countdown: None,
                             timeout: Some(30),
@@ -544,6 +547,7 @@ impl Tracker {
                             title: "Budget épuisé".to_string(),
                             body: format!("{name} va être fermé. Enregistrez ce qui doit l’être."),
                             icon,
+                            glyph: None,
                             tone: "critical",
                             countdown: Some(grace),
                             timeout: None,
@@ -631,6 +635,7 @@ impl Tracker {
                     title: "Application fermée".to_string(),
                     body: format!("{name} a été fermé : le budget du jour est épuisé."),
                     icon,
+                    glyph: None,
                     tone: "info",
                     countdown: None,
                     timeout: Some(12),

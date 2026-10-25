@@ -90,7 +90,7 @@ function countdownText(seconds) {
 function render(notice) {
   clearTimers();
   root.className = `notice ${notice.tone}`;
-  const toneIcon = notice.tone === "critical" ? "hourglass" : notice.tone === "warning" ? "alert" : "info";
+  const toneIcon = notice.glyph || (notice.tone === "critical" ? "hourglass" : notice.tone === "warning" ? "alert" : "info");
   const visual = notice.icon
     ? `<img class="notice-icon" src="${notice.icon}" alt="" />`
     : `<div class="notice-glyph">${A.icon(toneIcon, 18)}</div>`;
@@ -135,18 +135,33 @@ function render(notice) {
     timers.push(setInterval(tick, 250));
   }
 
-  // La fenêtre prend la hauteur exacte du contenu, ancrée au coin de
-  // l'écran.
-  requestAnimationFrame(() => {
-    const height = Math.ceil(root.getBoundingClientRect().height);
-    A.request("core", "notice.fit", { height });
-  });
+  fit();
 
   if (notice.timeout) {
     const id = notice.id;
     timers.push(setTimeout(() => A.request("core", "notice.dismiss", { id }), notice.timeout * 1000));
   }
 }
+
+/*
+  La fenêtre prend la hauteur exacte du contenu, ancrée au coin de l'écran.
+  Elle suit chaque changement de hauteur, pas seulement la première mesure :
+  la police embarquée peut finir de se charger après l'affichage, et un texte
+  qui tenait sur une ligne en police de secours en prend alors deux. Mesurée
+  une seule fois, la fenêtre coupait les boutons.
+*/
+let fitted = 0;
+
+function fit() {
+  const height = Math.ceil(root.getBoundingClientRect().height);
+  if (height > 0 && height !== fitted) {
+    fitted = height;
+    A.request("core", "notice.fit", { height });
+  }
+}
+
+new ResizeObserver(fit).observe(root);
+document.fonts.ready.then(fit);
 
 A.on("notice", render);
 render(A.boot.notice);

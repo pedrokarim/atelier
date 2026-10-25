@@ -69,6 +69,10 @@ pub struct Notice {
     pub body: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// Pictogramme de la bibliothèque d'icônes, affiché quand il n'y a pas
+    /// d'image ; à défaut, celui du ton.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub glyph: Option<&'static str>,
     /// `info`, `warning` ou `critical`.
     pub tone: &'static str,
     /// Compte à rebours affiché, en secondes.

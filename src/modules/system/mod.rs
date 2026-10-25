@@ -297,8 +297,9 @@ fn notice(suspect: &Suspect) -> Notice {
         .iter()
         .find(|reason| reason.tone == Tone::Critical)
         .map(|reason| reason.kind);
-    let (title, body) = match critical {
+    let (glyph, title, body) = match critical {
         Some("handles") => (
+            "alert",
             "Un processus accumule les handles".to_string(),
             format!(
                 "{} garde {}{} handles ouverts. La mémoire du noyau qu’ils occupent n’est rendue qu’à son arrêt.",
@@ -312,6 +313,7 @@ fn notice(suspect: &Suspect) -> Notice {
             ),
         ),
         _ => (
+            "memory",
             "Un processus accapare la mémoire".to_string(),
             format!(
                 "{} occupe {} sans aucune fenêtre ouverte.",
@@ -327,6 +329,7 @@ fn notice(suspect: &Suspect) -> Notice {
         title,
         body,
         icon: None,
+        glyph: Some(glyph),
         tone: "critical",
         countdown: None,
         timeout: None,
@@ -494,6 +497,7 @@ impl Module for System {
                     title: "Arrêt impossible".to_string(),
                     body: sentence(&format!("{error:#}")),
                     icon: None,
+                    glyph: Some("alert"),
                     tone: "warning",
                     countdown: None,
                     timeout: Some(15),
