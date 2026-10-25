@@ -6,6 +6,18 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Modifié
+
+- Nouveau logo : les vraies tailles de widgets d'Atelier sur leur grille, et
+  une case libre marquée d'un « + », la place du prochain widget. Il
+  remplace l'icône de l'exécutable, de l'installateur, de la zone de
+  notification et de la barre latérale.
+- L'icône de la zone de notification est dessinée au pixel près pour chaque
+  échelle d'affichage (16, 20, 24 et 32 px) : Windows reçoit la taille
+  qu'il affiche, au lieu de réduire une grande image.
+- Le logo et les icônes sont construits par `scripts/logo/build_logo.py`, qui
+  remplace `scripts/make-icon.ps1`.
+
 ### Corrigé
 
 - Une notification dont le texte passait à la ligne après le chargement de la

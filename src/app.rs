@@ -931,13 +931,40 @@ impl App {
     }
 }
 
+/// Icône de la zone de notification, dessinée au pixel près pour chaque
+/// échelle d'affichage (`scripts/logo/build_logo.py`) : Windows reçoit la
+/// taille exacte qu'il affiche, au lieu de réduire une grande image.
 fn load_tray_icon() -> Result<tray_icon::Icon> {
-    const PNG: &[u8] = include_bytes!("../assets/atelier-64.png");
+    const SIZES: [(i32, &[u8]); 4] = [
+        (16, include_bytes!("../assets/tray-16.png")),
+        (20, include_bytes!("../assets/tray-20.png")),
+        (24, include_bytes!("../assets/tray-24.png")),
+        (32, include_bytes!("../assets/tray-32.png")),
+    ];
 
-    let image = image::load_from_memory(PNG)
+    // Taille des petites icônes à l'échelle du système : 16 px à 100 %,
+    // 20 px à 125 %, 24 px à 150 %, 32 px à 200 %.
+    let wanted = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16);
+    let (size, png) = SIZES
+        .iter()
+        .copied()
+        .find(|(size, _)| *size >= wanted)
+        .unwrap_or(SIZES[SIZES.len() - 1]);
+
+    let mut image = image::load_from_memory(png)
         .context("décodage de l'icône embarquée")?
-        .resize_exact(32, 32, image::imageops::FilterType::Lanczos3)
         .into_rgba8();
+    // Échelle intermédiaire (175 %…) : la taille dessinée la plus proche,
+    // ajustée.
+    if size != wanted {
+        let wanted = wanted as u32;
+        image = image::imageops::resize(
+            &image,
+            wanted,
+            wanted,
+            image::imageops::FilterType::Lanczos3,
+        );
+    }
 
     let (width, height) = image.dimensions();
     tray_icon::Icon::from_rgba(image.into_raw(), width, height)

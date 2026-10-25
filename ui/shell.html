@@ -28,16 +28,9 @@ body { display: flex; }
   gap: 10px;
   padding: 2px 8px 18px;
 }
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-  color: #fff;
-  background: linear-gradient(135deg, #5598e7, #1c5cab);
-}
+/* Le logo d'Atelier (assets/logo/atelier-app-icon.svg) : la tuile bleue est
+   dans le dessin. */
+.brand-mark { width: 32px; height: 32px; flex: none; }
 .brand-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
 .brand-sub { font-size: 11.5px; color: var(--muted); }
 
@@ -187,7 +180,7 @@ body { display: flex; }
 
 <nav class="sidebar" id="sidebar">
   <div class="brand">
-    <div class="brand-mark" id="brandMark"></div>
+    <svg class="brand-mark" width="32" height="32" aria-hidden="true" viewBox="0 0 256 256"><rect width="256" height="256" rx="56.32" fill="#2a78d6"/><g transform="translate(48.64 43.52) scale(0.62)"><rect x="25" y="25" width="131" height="131" rx="15" fill="#ffffff"/><rect x="175" y="25" width="56" height="56" rx="11" fill="#ffffff"/><rect x="175" y="100" width="56" height="56" rx="11" fill="#ffffff"/><rect x="25" y="175" width="131" height="56" rx="11" fill="#ffffff"/><rect x="182" y="197" width="42" height="12" rx="3" fill="#a9cbf4"/><rect x="197" y="182" width="12" height="42" rx="3" fill="#a9cbf4"/></g></svg>
     <div>
       <div class="brand-title">Atelier</div>
       <div class="brand-sub">Widgets et outils</div>
@@ -215,7 +208,6 @@ const boot = A.boot;
 
 document.documentElement.style.setProperty("--cell", `${boot.cell}px`);
 document.documentElement.style.setProperty("--gap", `${boot.gap}px`);
-$("brandMark").innerHTML = A.icon("grid", 17);
 
 /* --- Navigation ---------------------------------------------------------- */
 

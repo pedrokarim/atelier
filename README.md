@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/atelier-64.png" width="72" height="72" alt="" />
+  <img src="assets/logo/atelier-app-icon.svg" width="72" height="72" alt="" />
 </p>
 
 <h1 align="center">Atelier</h1>
@@ -365,7 +365,7 @@ dans `atelier.log`. Pour essayer sans toucher à ses vraies données, créer
 | `ui/widget.html`, `ui/notice.html` | Widget du bureau, notification |
 | `ui/modules/*.js` | Moitié page de chaque module |
 | `installer/atelier.iss` | Installateur Inno Setup |
-| `scripts/make-icon.ps1` | Génère l'icône |
+| `scripts/logo/` | Construit le logo et les icônes ; guide d'usage dans `assets/logo/README.md` |
 | `scripts/audit/` | Audit de mise en page (voir ci-dessous) |
 
 ### Audit de mise en page
