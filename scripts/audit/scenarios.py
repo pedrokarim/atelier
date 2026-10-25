@@ -9,6 +9,10 @@ Chaque scénario remplit un dossier `data` (mode portable) :
 
 Les applications sont fictives (`c:\\audit\\…`) : aucun budget ne peut viser
 une application réellement lancée, donc aucune n'est fermée pendant l'audit.
+
+Le module Système lit, à la place des vrais processus, le relevé fictif
+`modules/system/demo.json` : ses pages sont mesurées sur des données
+déterministes, et aucune de ses actions ne vise un processus réel.
 """
 
 from __future__ import annotations
@@ -122,11 +126,82 @@ def _budgets(names: list[str], scenario: str) -> list[dict]:
     return budgets
 
 
+GIB = 1024 ** 3
+MIB = 1024 ** 2
+
+
+def _process(pid: int, name: str, private: float, *, parent: int = 1, handles: int = 900,
+             windowed: bool = False, console: bool = False, cpu: float = 0.0, hours: float = 2,
+             session: int = 1, path: str | None = None, threads: int = 14) -> dict:
+    now = int(datetime.now().timestamp() * 1000)
+    return {
+        "pid": pid, "parent": parent, "name": name,
+        "path": path or "C:\\Audit\\" + name,
+        "started": now - int(hours * 3_600_000),
+        "privateBytes": int(private), "commit": int(private * 1.3),
+        "handles": handles, "threads": threads, "session": session,
+        "windowed": windowed, "console": console, "cpu": cpu,
+    }
+
+
+def _system(scenario: str) -> dict:
+    """Relevé fictif du module Système."""
+    # Le lanceur commun : parent vivant de tous les processus ordinaires.
+    processes = [_process(1, "explorer.exe", 180 * MIB, parent=0, windowed=True, hours=30,
+                          path="C:\\Windows\\explorer.exe")]
+    processes += [_process(2 + index, "svchost.exe", 12 * MIB, parent=0, session=0,
+                           path="C:\\Windows\\System32\\svchost.exe") for index in range(6)]
+    memory = {
+        "total": 32 * GIB, "available": 14 * GIB, "commit": 21 * GIB, "commitLimit": 61 * GIB,
+        "kernelPaged": int(0.7 * GIB), "kernelNonpaged": int(0.4 * GIB), "cache": 6 * GIB,
+        "handles": 210_000, "processes": 312, "threads": 4_600,
+    }
+    if scenario == "vide":
+        processes += [_process(20, "navigateur.exe", 900 * MIB, windowed=True)]
+        return {"memory": memory, "processes": processes}
+
+    if scenario == "demo":
+        memory.update(available=int(2.3 * GIB), kernelPaged=int(3.9 * GIB), kernelNonpaged=int(1.4 * GIB),
+                      commit=int(36.6 * GIB), handles=7_466_215)
+        processes += [
+            _process(30, "jeu-de-role.exe", 7.4 * GIB, windowed=True, handles=2_713, cpu=14.0,
+                     path="C:\\Audit\\Jeu de rôle.exe"),
+            _process(31, "find.exe", 17 * MIB, parent=777, handles=7_250_506, console=True, cpu=4.0, hours=1.5),
+            _process(32, "tail.exe", 2 * MIB, parent=778, handles=123, console=True, hours=4),
+            _process(33, "indexeur.exe", 160 * MIB, handles=1_400, cpu=31.0),
+            _process(34, "analyseur.exe", 2.2 * GIB, handles=1_100),
+        ]
+        processes += [_process(40 + index, "navigateur.exe", 90 * MIB, windowed=index == 0,
+                               path="C:\\Audit\\Navigateur.exe") for index in range(17)]
+        processes += [_process(60 + index, "terminal.exe", 240 * MIB, windowed=True,
+                               path="C:\\Audit\\Terminal.exe") for index in range(2)]
+        return {"memory": memory, "processes": processes}
+
+    # Extrême : noms démesurés, valeurs énormes, beaucoup de suspects.
+    memory.update(total=2048 * GIB, available=40 * GIB, kernelPaged=700 * GIB, kernelNonpaged=180 * GIB,
+                  commit=3_900 * GIB, commitLimit=4_096 * GIB, handles=987_654_321,
+                  processes=4_812, threads=99_999)
+    for index, name in enumerate(LONG_NAMES):
+        processes.append(_process(100 + index, name + ".exe", (90 + index * 12) * GIB, windowed=index % 2 == 0,
+                                  handles=95_000_000 + index, console=index % 2 == 1, cpu=99.9,
+                                  parent=9_000 + index, hours=900, path="C:\\Audit\\" + name + ".exe"))
+    for index in range(1, 42):
+        name = f"Application numéro {index:02d}"
+        for copy in range(3 if index % 4 == 0 else 1):
+            processes.append(_process(200 + index * 10 + copy, name + ".exe", (index % 9 + 1) * 37 * GIB,
+                                      handles=60_000 if index % 5 == 0 else 2_000, cpu=index % 7 * 9.5,
+                                      console=index % 3 == 0, parent=8_000 if index % 3 == 0 else 1,
+                                      path="C:\\Audit\\" + name + ".exe"))
+    return {"memory": memory, "processes": processes}
+
+
 def _layout(scenario: str) -> dict:
     """Quelques widgets épinglés sur le bureau, pour auditer leur fenêtre."""
-    pinned = [("screen-time.today", "m"), ("screen-time.now", "s"), ("screen-time.budgets", "l")]
+    pinned = [("screen-time.today", "m"), ("screen-time.now", "s"), ("screen-time.budgets", "l"),
+              ("system.memory", "m"), ("system.clutter", "m")]
     if scenario == "extreme":
-        pinned += [("screen-time.running", "l"), ("screen-time.top", "m"), ("screen-time.week", "w")]
+        pinned += [("screen-time.running", "l"), ("screen-time.top", "m"), ("screen-time.week", "w"),
+                   ("system.memory", "s"), ("system.clutter", "l"), ("system.top", "l")]
     desktop = [
         {"id": f"audit-{index}", "widget": widget, "size": size, "settings": None,
          "x": 40 + index * 30, "y": 40 + index * 30, "topmost": False}
@@ -140,6 +215,9 @@ def prepare(scenario: str, data_dir: Path) -> None:
     module = data_dir / "modules" / "screen-time"
     (module / "days").mkdir(parents=True, exist_ok=True)
     (data_dir / "layout.json").write_text(json.dumps(_layout(scenario)), encoding="utf-8")
+    system = data_dir / "modules" / "system"
+    system.mkdir(parents=True, exist_ok=True)
+    (system / "demo.json").write_text(json.dumps(_system(scenario)), encoding="utf-8")
 
     if scenario == "vide":
         return

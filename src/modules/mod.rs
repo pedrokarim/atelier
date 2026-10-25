@@ -24,6 +24,7 @@ use serde_json::Value;
 use crate::ipc::{HostSender, Responder};
 
 pub mod screen_time;
+pub mod system;
 
 /// Ce que l'hôte confie à un module au démarrage.
 #[derive(Clone)]
@@ -69,5 +70,8 @@ pub trait Module: Send + Sync {
 
 /// Les modules de l'application, dans l'ordre de la barre latérale.
 pub fn registry() -> Vec<Arc<dyn Module>> {
-    vec![Arc::new(screen_time::ScreenTime::new())]
+    vec![
+        Arc::new(screen_time::ScreenTime::new()),
+        Arc::new(system::System::new()),
+    ]
 }

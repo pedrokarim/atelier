@@ -59,6 +59,9 @@ def routes(scenario: str) -> list[str]:
         "screen-time/apps",
         "screen-time/budgets",
         "screen-time/settings",
+        "system/overview",
+        "system/processes",
+        "system/processes?focus=c%3A%5Caudit%5Cnavigateur.exe",
         "settings",
     ]
     key = scenarios.first_app_key(scenario)
@@ -71,6 +74,8 @@ def routes(scenario: str) -> list[str]:
 DIALOGS = [
     ("home", "#addWidget", "catalogue des widgets"),
     ("screen-time/budgets", "#add", "nouveau budget"),
+    ("system/overview", "[data-stop]", "arrêt d'un processus"),
+    ("system/processes", "[data-group-menu]", "menu d'une application"),
 ]
 
 
@@ -105,7 +110,10 @@ def kind_of(page: Page) -> str | None:
         return None
 
 
-def pages_by_kind(browser, wait: float = 15) -> dict[str, list[Page]]:
+def pages_by_kind(browser, wait: float = 45) -> dict[str, list[Page]]:
+    # Attente large : chaque widget épinglé ouvre sa propre vue web, et le
+    # scénario « extreme » en compte une dizaine. On rend la main dès que la
+    # fenêtre principale est là.
     deadline = time.time() + wait
     while True:
         found: dict[str, list[Page]] = {}

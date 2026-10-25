@@ -6,7 +6,8 @@
 
 <p align="center">
   Une petite application de bureau pour Windows, organisée autour des widgets.<br />
-  Premier module : le temps d'écran, avec des budgets qui préviennent ou ferment l'application.
+  Deux modules : le temps d'écran, avec des budgets qui préviennent ou ferment l'application,
+  et ce qui encombre le système, avec de quoi y remédier.
 </p>
 
 <p align="center">
@@ -36,6 +37,7 @@ de l'accueil, ou s'épingle sur le bureau comme une petite fenêtre flottante.
 - [Aperçu](#aperçu)
 - [Utilisation](#utilisation)
 - [Le module Temps d'écran](#le-module-temps-décran)
+- [Le module Système](#le-module-système)
 - [Ajouter un module](#ajouter-un-module)
 - [Développement](#développement)
 - [Licence](#licence)
@@ -166,6 +168,8 @@ widget a les mêmes dimensions sur l'accueil et sur le bureau.
     config.json                  réglages et budgets
     apps.json                    applications connues (nom, chemin, icône)
     days\AAAA-MM-JJ.json         une journée d'utilisation
+  modules\system\
+    config.json                  notifications, applications ignorées
 ```
 
 **Mode portable** : si un dossier `data` existe à côté de l'exécutable, tout y
@@ -211,6 +215,47 @@ dans la journée. Toutes ces durées se règlent dans **Réglages du suivi**.
   programme qui ne l'est pas.
 - Une partie à la manette dans une fenêtre qui n'occupe pas tout l'écran passe
   pour une absence au bout de 5 minutes sans clavier ni souris (réglable).
+
+## Le module Système
+
+Ce qui encombre l'ordinateur, et de quoi y remédier. Atelier fait un relevé
+de la mémoire et de chaque processus, sans droits d'administrateur, et
+signale ce qui a l'air anormal :
+
+| Signalé | Quand |
+| --- | --- |
+| **Handles accumulés** | un processus garde plus de 50 000 handles ouverts (critique au-delà de 500 000) ; un programme ordinaire en a quelques milliers. Chacun occupe de la mémoire du noyau, qu'aucun gestionnaire de tâches n'impute au processus |
+| **Mémoire accaparée** | une application, tous processus confondus, occupe plus de 12 % de la mémoire (et au moins 2 Go) |
+| **Processeur sollicité** | un processus sans fenêtre utilise plus de 20 % de la machine pendant plus de 30 secondes |
+| **Resté seul** | une commande en ligne de commande, sans fenêtre, dont le terminal ou le script s'est fermé il y a plus de 10 minutes |
+
+Pour l'ordinateur entier, la page **Encombrement** répartit la mémoire
+(applications, noyau, partagé, disponible) et alerte quand le noyau gonfle,
+quand la mémoire disponible vient à manquer ou quand la mémoire engagée
+approche de sa limite. La page **Processus** liste chaque application avec
+la somme de ses processus, triable et dépliable.
+
+Actions :
+
+- **Demander la fermeture** : un message de fermeture aux fenêtres de
+  l'application, qui peut proposer d'enregistrer ;
+- **Arrêter** : l'arrêt immédiat du processus, ou de tous ceux d'une
+  application, après confirmation. Le processus visé est identifié par son
+  numéro **et** son heure de lancement : un successeur qui aurait hérité du
+  numéro n'est jamais arrêté à sa place ;
+- **Ne plus signaler** : une application gourmande par nature, un jeu par
+  exemple, n'apparaît plus dans *À traiter* ;
+- **Ouvrir l'emplacement** de l'exécutable.
+
+Les processus de Windows (services, `svchost.exe`, `csrss.exe`…) et ceux
+d'Atelier lui-même sont **protégés** : aucune action ne les vise. Une
+surveillance de fond refait le relevé toutes les 10 secondes et, sauf si on
+la coupe, prévient par une notification quand un processus accumule les
+handles ou accapare la mémoire sans aucune fenêtre ouverte.
+
+Widgets : *Mémoire*, *Ce qui encombre* (arrêt sur place, en deux clics),
+*Les plus gourmandes*. Si le module Temps d'écran est présent, ses noms et
+icônes d'applications sont repris.
 
 ## Ajouter un module
 
@@ -314,6 +359,7 @@ dans `atelier.log`. Pour essayer sans toucher à ses vraies données, créer
 | `src/ui.rs` | Assemblage des pages embarquées, police |
 | `src/modules/mod.rs` | Contrat d'un module, registre |
 | `src/modules/screen_time/` | Module Temps d'écran : suivi, budgets, rapports |
+| `src/modules/system/` | Module Système : relevés, analyse de l'encombrement, actions |
 | `ui/core.css`, `ui/core.js` | Styles, composants et noyau communs |
 | `ui/shell.html` | Fenêtre principale |
 | `ui/widget.html`, `ui/notice.html` | Widget du bureau, notification |
@@ -335,7 +381,7 @@ le port de débogage de WebView2, et mesure chaque écran dans la page
 | Écrans | chaque page, les boîtes de dialogue, le laboratoire des widgets (route `lab` : chaque widget dans chacune de ses tailles), les widgets du bureau, la notification |
 | Thèmes | sombre et clair |
 | Largeurs de fenêtre | 1920, 1440, 1280, 1024 et 860 pixels (le minimum de la fenêtre) |
-| Données | vides, normales, extrêmes (noms très longs, 45 applications, budgets dépassés) |
+| Données | vides, normales, extrêmes (noms très longs, 45 applications, budgets dépassés). Le module Système lit un relevé fictif (`modules/system/demo.json`) : aucune de ses actions ne vise un vrai processus pendant l'audit |
 
 | Ce qui est signalé | |
 | --- | --- |

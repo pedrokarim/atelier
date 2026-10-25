@@ -6,6 +6,25 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+
+- Module **Système** : ce qui encombre l'ordinateur, et de quoi y remédier.
+  - Répartition de la mémoire (applications, noyau, partagé, disponible),
+    avec des alertes quand le noyau gonfle, quand la mémoire disponible
+    manque ou quand la mémoire engagée approche de sa limite.
+  - Processus anormaux : handles accumulés, mémoire accaparée, processeur
+    sollicité sans fenêtre, commande restée seule après la fermeture de son
+    terminal.
+  - Actions : demander la fermeture, arrêter un processus ou une
+    application entière, ne plus signaler une application. Les processus de
+    Windows et d'Atelier sont protégés.
+  - Notification quand un processus devient anormal, avec un bouton pour
+    l'arrêter.
+  - Pages *Encombrement* et *Processus*, widgets *Mémoire*, *Ce qui encombre*
+    et *Les plus gourmandes*.
+- Audit de mise en page : les pages et widgets du module Système, sur un
+  relevé fictif.
+
 ## [0.1.2] - 2026-10-12
 
 ### Corrigé
