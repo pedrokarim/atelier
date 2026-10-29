@@ -34,13 +34,19 @@ body { display: flex; }
 .brand-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
 .brand-sub { font-size: 11.5px; color: var(--muted); }
 
+/* Titre de groupe : petit, espacé, discret, et précédé d'un filet. Il ne
+   doit jamais se lire comme un lien : ceux-ci sont plus grands, en couleur
+   de texte pleine, et portent une icône. */
 .nav-group {
-  padding: 16px 10px 6px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
+  margin-top: 12px;
+  padding: 14px 10px 5px;
+  border-top: 1px solid var(--border);
+  color: color-mix(in srgb, var(--muted) 85%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  user-select: none;
 }
 
 .nav-item {
@@ -52,11 +58,16 @@ body { display: flex; }
   border: 0;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--text-2);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
+.nav-item svg { color: var(--text-2); flex: none; }
+.nav-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item[aria-current="page"] svg { color: inherit; }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
 .nav-item:focus-visible { outline: none; box-shadow: var(--ring); }
 .nav-item[aria-current="page"] {
@@ -243,7 +254,7 @@ function renderNav() {
     const button = document.createElement("button");
     button.className = "nav-item";
     button.dataset.route = item.route;
-    button.innerHTML = `${A.icon(item.icon, 17)}<span>${A.escape(item.label)}</span>`;
+    button.innerHTML = `${A.icon(item.icon, 17)}<span title="${A.escape(item.label)}">${A.escape(item.label)}</span>`;
     nav.appendChild(button);
   }
   $("navSettings").innerHTML = `${A.icon("settings", 17)}<span>Réglages</span>`;
@@ -666,6 +677,8 @@ async function renderSettings(page) {
       </div>
     </section>
 
+    <section class="card" id="updates"></section>
+
     <section class="card">
       <div class="card-head"><div class="module-icon">${A.icon("folder", 16)}</div><div class="card-title">Données</div></div>
       <div class="status-line ${status.portable ? "ok" : ""}"><span class="status-dot"></span>${status.portable ? "Mode portable : les données voyagent avec le programme" : "Données rangées dans le profil Windows"}</div>
@@ -741,6 +754,7 @@ async function renderSettings(page) {
     }
     renderSettings(page);
   });
+  mountUpdates($("updates"));
   $("openData").addEventListener("click", () => A.request("core", "open.data"));
   $("openLog").addEventListener("click", () => A.request("core", "open.log"));
   $("quit").addEventListener("click", async () => {
@@ -749,6 +763,95 @@ async function renderSettings(page) {
       "Quitter");
     if (ok) A.request("core", "quit");
   });
+}
+
+/* --- Mises à jour --------------------------------------------------------- */
+
+/*
+  La carte suit l'état de l'hôte : chaque changement (vérification en cours,
+  version trouvée, erreur) arrive par l'événement « core.update ».
+*/
+function mountUpdates(card) {
+  const NB = A.NBSP;
+  let status = null;
+
+  function lastCheck() {
+    if (!status.lastCheck) return "Jamais vérifié";
+    const date = new Date(status.lastCheck);
+    const today = new Date().toDateString() === date.toDateString();
+    const time = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    return `Vérifié ${today ? "aujourd’hui" : `le ${date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`} à ${time}`;
+  }
+
+  function render() {
+    if (!card.isConnected || !status) return;
+    const available = status.available;
+    let line;
+    if (status.installing) line = `<div class="status-line"><span class="status-dot"></span>Téléchargement de la version ${A.escape(available ? available.version : "")}…</div>`;
+    else if (status.checking) line = `<div class="status-line"><span class="status-dot"></span>Vérification en cours…</div>`;
+    else if (available) line = `<div class="status-line ok"><span class="status-dot"></span>La version ${A.escape(available.version)} est disponible</div>`;
+    else if (status.lastCheck && !status.error) line = `<div class="status-line ok"><span class="status-dot"></span>Atelier est à jour</div>`;
+    else line = `<div class="status-line"><span class="status-dot"></span>${lastCheck()}</div>`;
+
+    const hint = available && status.blocked
+      ? `<div class="field-hint">${A.escape(status.blocked)}</div>`
+      : available
+        ? `<div class="field-hint">La mise à jour ferme Atelier un instant, puis le relance. Vos données sont conservées.</div>`
+        : "";
+
+    card.innerHTML = `
+      <div class="card-head"><div class="module-icon">${A.icon("refresh", 16)}</div><div class="card-title">Mises à jour</div><div class="spacer"></div><div class="card-sub">Version ${A.escape(status.current)}</div></div>
+      ${line}
+      ${status.error ? `<div class="field-hint" style="color:var(--critical-text)">${A.escape(status.error)}</div>` : ""}
+      ${status.lastCheck && (available || !status.error) ? `<div class="field-hint">${lastCheck()}</div>` : ""}
+      ${hint}
+      <label class="toggle">
+        <input type="checkbox" id="updateAuto" ${status.autoCheck ? "checked" : ""} />
+        <span class="track"><span class="thumb"></span></span>
+        <span class="toggle-text">
+          <span class="toggle-title">Rechercher les mises à jour automatiquement</span>
+          <span class="toggle-desc">Atelier consulte la page des versions sur GitHub deux fois par jour, et prévient par une notification. Rien n’est envoyé.</span>
+        </span>
+      </label>
+      <div class="card-actions">
+        ${available && !status.blocked
+          ? `<button class="btn btn-primary" id="updateInstall" type="button" ${status.installing ? "disabled" : ""}>${A.icon("download", 15)}Mettre à jour</button>`
+          : ""}
+        ${available
+          ? `<button class="btn" id="updateRelease" type="button">${A.icon("external", 15)}Voir les nouveautés</button>`
+          : ""}
+        <button class="btn" id="updateCheck" type="button" ${status.checking || status.installing ? "disabled" : ""}>${A.icon("refresh", 15)}Rechercher maintenant</button>
+      </div>`;
+
+    card.querySelector("#updateAuto").addEventListener("change", async (event) => {
+      status = await A.request("core", "update.auto", { enabled: event.target.checked });
+      render();
+    });
+    card.querySelector("#updateCheck").addEventListener("click", async () => {
+      try {
+        status = await A.request("core", "update.check");
+        render();
+        if (!status.available) A.toast(`Atelier est à jour${NB}: version ${status.current}.`, "success");
+      } catch (error) {
+        A.toast(error.message, "error");
+      }
+    });
+    const install = card.querySelector("#updateInstall");
+    if (install) {
+      install.addEventListener("click", async () => {
+        try {
+          await A.request("core", "update.install");
+        } catch (error) {
+          A.toast(error.message, "error");
+        }
+      });
+    }
+    const release = card.querySelector("#updateRelease");
+    if (release) release.addEventListener("click", () => A.request("core", "update.release"));
+  }
+
+  cleanups.push(A.on("core.update", (next) => { status = next; render(); }));
+  A.request("core", "update.status").then((next) => { status = next; render(); });
 }
 
 /* --- Statut des modules dans la barre latérale -------------------------- */

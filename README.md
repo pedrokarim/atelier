@@ -28,7 +28,7 @@ de l'accueil, ou s'épingle sur le bureau comme une petite fenêtre flottante.
 
 - **Un seul exécutable** d'environ 1,4 Mo, sans DLL : l'interface est rendue
   par WebView2, le moteur d'Edge, déjà présent sur Windows 11.
-- **Tout reste sur l'ordinateur** : aucune donnée n'est envoyée nulle part.
+- **Rien ne quitte l'ordinateur sans raison** : aucune mesure, aucun historique n'est envoyé. Seules sortent la vérification des mises à jour (une lecture de la page des versions sur GitHub, qui se coupe) et, à la demande, le texte confié à la synthèse vocale.
 - **Extensible** : ajouter un widget, par exemple les cours de la bourse,
   revient à écrire un module, sans toucher au cœur.
 
@@ -56,7 +56,9 @@ Télécharger la dernière version depuis la page
 | `SHA256SUMS.txt` | Empreintes pour vérifier les téléchargements. |
 
 > Windows SmartScreen peut avertir au premier lancement : l'exécutable n'est
-> pas signé. *Informations complémentaires*, puis *Exécuter quand même*.
+> pas signé, et l'avertissement indique « Éditeur inconnu ».
+> *Informations complémentaires*, puis *Exécuter quand même*. Les propriétés
+> du fichier et les Paramètres de Windows nomment l'éditeur : Ascencia.
 
 L'option « Lancer Atelier à l'ouverture de session » est cochée par défaut
 dans l'installateur : le temps d'écran n'est compté que pendant qu'Atelier
@@ -149,6 +151,22 @@ Une case de la grille mesure 172 pixels ; les tailles couvrent une case, deux
 cases côte à côte, un carré de quatre cases, ou une bande de quatre cases. Un
 widget a les mêmes dimensions sur l'accueil et sur le bureau.
 
+### Mises à jour
+
+Atelier consulte la page des versions sur GitHub une minute après son
+lancement, puis toutes les 12 heures. Quand une version plus récente existe,
+une notification propose de l'installer :
+
+1. l'installateur de la nouvelle version est téléchargé, puis comparé à son
+   empreinte publiée (`SHA256SUMS.txt`) : au moindre écart, rien n'est lancé ;
+2. il s'exécute sans fenêtre, Atelier se ferme le temps de la copie ;
+3. l'installateur relance Atelier, qui confirme la nouvelle version.
+
+Les données ne sont pas touchées. Dans **Réglages**, la carte *Mises à jour*
+montre la version en cours, vérifie à la demande et coupe la vérification
+automatique. Une copie portable est seulement prévenue : il suffit de
+remplacer `atelier.exe` par celui de la nouvelle archive.
+
 ### Ligne de commande
 
 | Option | Effet |
@@ -164,6 +182,7 @@ widget a les mêmes dimensions sur l'accueil et sur le bureau.
 ```
 %APPDATA%\atelier\
   layout.json                    widgets de l'accueil et du bureau
+  update.json                    vérification des mises à jour
   atelier.log                    journal
   webview\                       profil du moteur de rendu
   modules\screen-time\
@@ -410,6 +429,7 @@ dans `atelier.log`. Pour essayer sans toucher à ses vraies données, créer
 | `src/main.rs` | Options de ligne de commande, instance unique |
 | `src/app.rs` | Boucle de messages, zone de notification, fenêtres, aiguillage des requêtes |
 | `src/webview.rs` | Fenêtres Win32 hébergeant une vue web, avec ou sans cadre |
+| `src/update.rs`, `src/http.rs` | Mises à jour : dernière version sur GitHub, téléchargement vérifié, installation |
 | `src/ipc.rs` | Requêtes des pages, répondeurs, événements des modules, notifications |
 | `src/layout.rs` | Disposition des widgets (accueil et bureau) |
 | `src/ui.rs` | Assemblage des pages embarquées, police |

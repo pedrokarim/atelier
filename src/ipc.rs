@@ -31,6 +31,9 @@ pub const WM_APP_WINDOW_MOVED: u32 = WM_APP + 4;
 pub const WM_APP_THEME: u32 = WM_APP + 5;
 /// Battement de la minuterie de l'hôte.
 pub const WM_APP_TIMER: u32 = WM_APP + 6;
+/// Fermeture demandée depuis un autre fil : une mise à jour va remplacer
+/// l'exécutable.
+pub const WM_APP_QUIT: u32 = WM_APP + 7;
 
 /// Fenêtre cachée qui reçoit les messages de l'application.
 static HOST: AtomicIsize = AtomicIsize::new(0);

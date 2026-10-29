@@ -26,6 +26,7 @@ use crate::layout::{self, Instance, Layout, Pinned};
 use crate::logging::log_line;
 use crate::modules::{Module, ModuleContext};
 use crate::ui::{self, Page};
+use crate::update::Updater;
 use crate::webview::{self, Kind, Placement, Spec, WebWindow};
 use crate::{autostart, install, paths};
 
@@ -71,6 +72,7 @@ pub struct App {
     dark: bool,
     tray: Option<Tray>,
     ticks: u32,
+    updater: Arc<Updater>,
 }
 
 impl App {
@@ -84,9 +86,11 @@ impl App {
         let webview_dir = paths::webview_dir()?;
         std::fs::create_dir_all(&webview_dir).ok();
 
+        let host = HostSender::new(event_sender);
+
         Ok(Self {
             modules,
-            host: HostSender::new(event_sender),
+            host: host.clone(),
             events,
             messages_sender,
             messages,
@@ -100,6 +104,7 @@ impl App {
             dark: webview::prefers_dark(),
             tray: None,
             ticks: 0,
+            updater: Updater::new(host),
         })
     }
 
@@ -114,6 +119,7 @@ impl App {
         }
 
         self.tray = Some(self.build_tray()?);
+        self.updater.start();
         self.refresh_tray_tooltip();
 
         let first_run = !self.layout.initialized;
@@ -405,6 +411,8 @@ impl App {
         match kind {
             ipc::WM_APP_SHOW => self.open_main(None),
 
+            ipc::WM_APP_QUIT => unsafe { PostQuitMessage(0) },
+
             ipc::WM_APP_WINDOW_CLOSED => {
                 let hwnd = HWND(value as *mut _);
                 if self.main.as_ref().is_some_and(|window| window.hwnd == hwnd) {
@@ -532,7 +540,9 @@ impl App {
 
         let reply = Responder::new(window, request.id, self.host.clone());
 
-        if request.target == "core" {
+        if request.target == "core" && request.method.starts_with("update.") {
+            self.updater.handle(&request.method, request.params, reply);
+        } else if request.target == "core" {
             let result = self.handle_core(window, &request.method, request.params);
             reply.result(result);
         } else if let Some(module) = self
@@ -725,6 +735,7 @@ impl App {
                 {
                     module.notice_action(&id, &action);
                 }
+                self.updater.notice_action(&id, &action);
                 self.remove_notice(&id);
                 Ok(Value::Null)
             }
@@ -1039,7 +1050,8 @@ unsafe extern "system" fn host_proc(
         | ipc::WM_APP_SHOW
         | ipc::WM_APP_WINDOW_CLOSED
         | ipc::WM_APP_WINDOW_MOVED
-        | ipc::WM_APP_THEME => {
+        | ipc::WM_APP_THEME
+        | ipc::WM_APP_QUIT => {
             PENDING.with(|queue| queue.borrow_mut().push_back((message, lparam.0)));
             LRESULT(0)
         }

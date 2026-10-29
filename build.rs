@@ -16,6 +16,8 @@ fn main() {
     resource.set_manifest_file("assets/atelier.manifest");
     resource.set("FileDescription", "Atelier");
     resource.set("ProductName", "Atelier");
+    resource.set("CompanyName", "Ascencia");
+    resource.set("LegalCopyright", "© 2026 Ascencia");
     resource.set("OriginalFilename", "atelier.exe");
 
     // Un échec ici ne doit pas empêcher de compiler : le binaire reste

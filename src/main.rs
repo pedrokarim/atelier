@@ -8,6 +8,7 @@
 
 mod app;
 mod autostart;
+mod http;
 mod install;
 mod ipc;
 mod layout;
@@ -16,6 +17,7 @@ mod modules;
 mod paths;
 mod shell;
 mod ui;
+mod update;
 mod webview;
 
 use anyhow::{Result, anyhow};

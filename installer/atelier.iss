@@ -22,6 +22,7 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=Ascencia
+AppCopyright=© 2026 Ascencia
 AppPublisherURL={#AppRepository}
 AppSupportURL={#AppRepository}/issues
 AppUpdatesURL={#AppRepository}/releases
@@ -76,6 +77,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; Mise à jour lancée par Atelier lui-même (/VERYSILENT /RELAUNCH=1) : il s'est
+; fermé pour laisser remplacer son exécutable, on le relance.
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RelaunchAfterUpdate
 
 [UninstallRun]
 ; Le programme réside dans la zone de notification : on l'arrête avant de
@@ -86,6 +90,12 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#AppExe}"; Flags: runhidden
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+// Atelier lance sa propre mise à jour en silencieux, avec /RELAUNCH=1.
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:relaunch|0}') = '1');
+end;
+
 // L'entrée de démarrage peut avoir été créée depuis le programme plutôt que
 // par l'installateur : on la retire dans tous les cas, pour ne pas laisser
 // Windows lancer un exécutable disparu.
