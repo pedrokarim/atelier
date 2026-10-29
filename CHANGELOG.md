@@ -6,6 +6,27 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+
+- Module **Synthèse vocale** : un raccourci global (Ctrl+Alt+S par défaut)
+  envoie le presse-papiers vers la synthèse vocale de Just Tools, ouverte
+  dans Edge, qui démarre la lecture toute seule. Il remplace le programme
+  autonome `tts-hotkey`.
+  - Mêmes réglages que l'ancien programme : raccourci capturé au clavier,
+    mode d'ouverture (fenêtre applicative, PWA installée, onglet), débit,
+    hauteur, volume, voix, langue, traitement du texte, déblocage de la
+    lecture automatique par une frappe F24.
+  - Au premier lancement, les réglages de `tts-hotkey` sont repris. S'il est
+    encore installé, la page **Lecture** le signale et propose de le
+    retirer : arrêt, installation, raccourci du menu Démarrer et démarrage
+    automatique.
+  - Lecture d'un texte saisi, essai avec les réglages en cours d'édition, et
+    aperçu de l'adresse ouverte, sans rien lancer.
+  - Widget *Synthèse vocale* : le raccourci et un bouton de lecture.
+  - Le raccourci est suspendu pendant qu'on en compose un nouveau ; refusé
+    par Windows, l'ancien reste actif et une notification l'explique.
+- Les modules peuvent ouvrir une de leurs pages depuis une notification.
+
 ## [0.2.1] - 2026-10-25
 
 ### Modifié

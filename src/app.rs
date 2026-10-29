@@ -520,6 +520,7 @@ impl App {
                 self.show_notice();
             }
             HostEvent::DismissNotice(id) => self.remove_notice(&id),
+            HostEvent::Open(page) => self.open_main(Some(page)),
         }
     }
 

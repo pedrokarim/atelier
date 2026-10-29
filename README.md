@@ -6,8 +6,9 @@
 
 <p align="center">
   Une petite application de bureau pour Windows, organisée autour des widgets.<br />
-  Deux modules : le temps d'écran, avec des budgets qui préviennent ou ferment l'application,
-  et ce qui encombre le système, avec de quoi y remédier.
+  Trois modules : le temps d'écran, avec des budgets qui préviennent ou ferment l'application,
+  ce qui encombre le système, avec de quoi y remédier, et un raccourci qui fait lire le
+  presse-papiers à voix haute.
 </p>
 
 <p align="center">
@@ -38,6 +39,7 @@ de l'accueil, ou s'épingle sur le bureau comme une petite fenêtre flottante.
 - [Utilisation](#utilisation)
 - [Le module Temps d'écran](#le-module-temps-décran)
 - [Le module Système](#le-module-système)
+- [Le module Synthèse vocale](#le-module-synthèse-vocale)
 - [Ajouter un module](#ajouter-un-module)
 - [Développement](#développement)
 - [Licence](#licence)
@@ -170,6 +172,8 @@ widget a les mêmes dimensions sur l'accueil et sur le bureau.
     days\AAAA-MM-JJ.json         une journée d'utilisation
   modules\system\
     config.json                  notifications, applications ignorées
+  modules\speech\
+    config.json                  raccourci, ouverture dans Edge, réglages de lecture
 ```
 
 **Mode portable** : si un dossier `data` existe à côté de l'exécutable, tout y
@@ -256,6 +260,58 @@ handles ou accapare la mémoire sans aucune fenêtre ouverte.
 Widgets : *Mémoire*, *Ce qui encombre* (arrêt sur place, en deux clics),
 *Les plus gourmandes*. Si le module Temps d'écran est présent, ses noms et
 icônes d'applications sont repris.
+
+## Le module Synthèse vocale
+
+Un raccourci global envoie le contenu du presse-papiers vers la synthèse
+vocale de [Just Tools](https://just-tools.ascencia.re), qui démarre la
+lecture toute seule :
+
+```
+Ctrl+Alt+S  →  presse-papiers  →  base64url  →  Edge  →  /tools/text-to-speech?b64=…&autoplay=1
+```
+
+Le module remplace le programme autonome `tts-hotkey`. Au premier lancement,
+il reprend ses réglages (`%APPDATA%\just-tools\tts-hotkey.toml`). Tant que
+l'ancien programme tourne, Windows lui réserve le raccourci : la page
+**Lecture** le signale et propose de le retirer (arrêt, installation,
+raccourci du menu Démarrer, démarrage automatique). Ses réglages et son
+journal restent en place.
+
+La page **Lecture** montre l'état du raccourci, lit le presse-papiers ou un
+texte saisi, et rappelle la dernière lecture. La page **Réglages** reprend
+tout ce que réglait l'ancien programme :
+
+| Réglage | Effet |
+| --- | --- |
+| Raccourci global | Capturé au clavier ; au moins un modificateur (Ctrl, Alt, Shift, Win). Il est suspendu le temps de la saisie |
+| Mode d'ouverture | *Fenêtre applicative* (`--app=`, sans rien installer), *PWA installée* (réutilise sa fenêtre, demande son identifiant), *Onglet* |
+| Lecture | Lecture automatique, interface « lecteur », débit, hauteur, volume, voix, langue |
+| Traitement du texte | Longueur maximale, espaces aplatis, mots coupés en fin de ligne recollés |
+| Déblocage de la lecture | Fenêtre mise au premier plan, frappe F24, délai, bip |
+
+**Tester** lit le presse-papiers avec les réglages en cours d'édition, sans
+les enregistrer ; **Afficher l'adresse** montre ce qui serait ouvert, sans
+rien lancer.
+
+Pourquoi une frappe F24 : Chromium refuse `speechSynthesis.speak()` sur un
+document qui n'a reçu aucune interaction. Après l'ouverture, Atelier met la
+fenêtre de l'outil au premier plan et envoie une frappe F24 ; c'est une vraie
+frappe au niveau du système, que le navigateur compte comme un geste de
+l'utilisateur. Aucun clavier courant n'a de touche F24 : aucun effet de bord
+dans la page.
+
+Widget : *Synthèse vocale*, le raccourci et un bouton de lecture.
+
+### Limites connues
+
+- La ligne de commande de Windows est limitée à 32 767 caractères : le texte
+  est tronqué au-delà de la longueur maximale (12 000 par défaut).
+- En mode *Fenêtre applicative*, chaque lecture ouvre une fenêtre ; le mode
+  *PWA installée* réutilise la sienne.
+- Certaines combinaisons `Win+…` sont réservées par Windows et n'atteignent
+  aucun programme. Un raccourci refusé laisse l'ancien actif, et une
+  notification l'explique.
 
 ## Ajouter un module
 
@@ -360,6 +416,7 @@ dans `atelier.log`. Pour essayer sans toucher à ses vraies données, créer
 | `src/modules/mod.rs` | Contrat d'un module, registre |
 | `src/modules/screen_time/` | Module Temps d'écran : suivi, budgets, rapports |
 | `src/modules/system/` | Module Système : relevés, analyse de l'encombrement, actions |
+| `src/modules/speech/` | Module Synthèse vocale : raccourci global, presse-papiers, ouverture dans Edge, reprise de tts-hotkey |
 | `ui/core.css`, `ui/core.js` | Styles, composants et noyau communs |
 | `ui/shell.html` | Fenêtre principale |
 | `ui/widget.html`, `ui/notice.html` | Widget du bureau, notification |

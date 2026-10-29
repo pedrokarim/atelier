@@ -115,6 +115,8 @@ pub enum HostEvent {
     },
     Notice(Notice),
     DismissNotice(String),
+    /// Ouvre la fenêtre principale sur une page : `module/page`.
+    Open(String),
 }
 
 /// Expédie des événements à l'hôte depuis n'importe quel fil.
@@ -145,6 +147,10 @@ impl HostSender {
 
     pub fn dismiss(&self, id: &str) {
         self.send(HostEvent::DismissNotice(id.to_string()));
+    }
+
+    pub fn open(&self, page: &str) {
+        self.send(HostEvent::Open(page.to_string()));
     }
 }
 

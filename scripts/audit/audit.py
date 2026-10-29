@@ -62,6 +62,8 @@ def routes(scenario: str) -> list[str]:
         "system/overview",
         "system/processes",
         "system/processes?focus=c%3A%5Caudit%5Cnavigateur.exe",
+        "speech/read",
+        "speech/settings",
         "settings",
     ]
     key = scenarios.first_app_key(scenario)
@@ -76,6 +78,7 @@ DIALOGS = [
     ("screen-time/budgets", "#add", "nouveau budget"),
     ("system/overview", "[data-stop]", "arrêt d'un processus"),
     ("system/processes", "[data-group-menu]", "menu d'une application"),
+    ("speech/settings", "#chooseApp", "applications installées dans Edge"),
 ]
 
 

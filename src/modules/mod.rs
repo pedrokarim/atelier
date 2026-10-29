@@ -24,6 +24,7 @@ use serde_json::Value;
 use crate::ipc::{HostSender, Responder};
 
 pub mod screen_time;
+pub mod speech;
 pub mod system;
 
 /// Ce que l'hôte confie à un module au démarrage.
@@ -73,5 +74,6 @@ pub fn registry() -> Vec<Arc<dyn Module>> {
     vec![
         Arc::new(screen_time::ScreenTime::new()),
         Arc::new(system::System::new()),
+        Arc::new(speech::Speech::new()),
     ]
 }
