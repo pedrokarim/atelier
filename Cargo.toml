@@ -1,6 +1,6 @@
 [package]
 name = "atelier"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 description = "Atelier : application de bureau modulaire, à widgets"
 license = "MIT"
