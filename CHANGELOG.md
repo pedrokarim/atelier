@@ -6,6 +6,24 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [0.3.1] - 2026-10-29
+
+### Ajouté
+
+- Mises à jour : Atelier vérifie la page des versions sur GitHub (au
+  démarrage, puis toutes les 12 heures) et propose la nouvelle version par
+  une notification. L'installateur est téléchargé, vérifié par son empreinte
+  SHA-256, exécuté sans fenêtre, puis Atelier est relancé. Carte
+  *Mises à jour* dans les réglages : version en cours, vérification à la
+  demande, vérification automatique désactivable.
+- L'exécutable nomme son éditeur, Ascencia, dans ses propriétés.
+
+### Modifié
+
+- Barre latérale : les titres de groupe (Temps d'écran, Système…) ne se
+  confondent plus avec les liens. Ils sont plus petits, plus discrets et
+  séparés par un filet ; les liens passent en couleur de texte pleine.
+
 ## [0.3.0] - 2026-10-29
 
 ### Ajouté
@@ -145,7 +163,8 @@ Première version.
   installation depuis le programme lui-même.
 - Intégration continue et publication automatique sur GitHub Actions.
 
-[Non publié]: https://github.com/pedrokarim/atelier/compare/v0.3.0...HEAD
+[Non publié]: https://github.com/pedrokarim/atelier/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/pedrokarim/atelier/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/pedrokarim/atelier/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/pedrokarim/atelier/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/pedrokarim/atelier/compare/v0.1.2...v0.2.0

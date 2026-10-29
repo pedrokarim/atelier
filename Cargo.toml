@@ -1,6 +1,6 @@
 [package]
 name = "atelier"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "Atelier : application de bureau modulaire, à widgets"
 license = "MIT"
@@ -26,6 +26,7 @@ windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
+    "Win32_Networking_WinHttp",
     "Win32_Storage_FileSystem",
     "Win32_UI_Controls",
     "Win32_UI_Controls_Dialogs",
@@ -35,6 +36,7 @@ windows = { version = "0.62.2", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Com",
     "Win32_Security",
+    "Win32_Security_Cryptography",
     "Win32_System_Console",
     "Win32_System_DataExchange",
     "Win32_System_Diagnostics_Debug",
