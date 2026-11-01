@@ -5,6 +5,10 @@
 //! Ctrl+Alt+S → presse-papiers → base64url → Edge → /tools/text-to-speech?b64=…&autoplay=1
 //! ```
 //!
+//! Un second raccourci fait le même trajet, le texte traduit en chemin (voir
+//! `translate`). La PWA installée, si elle existe, reçoit le texte dans sa
+//! fenêtre déjà ouverte ; sinon Edge ouvre une fenêtre par lecture.
+//!
 //! Chromium refuse `speechSynthesis.speak()` sur un document qui n'a reçu
 //! aucune interaction. Après le lancement, le module met donc la fenêtre au
 //! premier plan et envoie une frappe F24 : une vraie frappe au niveau du
@@ -18,6 +22,7 @@ mod config;
 mod hotkey;
 mod launcher;
 mod legacy;
+mod translate;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -30,8 +35,9 @@ use windows::Win32::UI::Controls::Dialogs::{GetOpenFileNameW, OFN_FILEMUSTEXIST,
 use windows::Win32::UI::WindowsAndMessaging::MB_OK;
 use windows::core::{PCWSTR, PWSTR};
 
-use self::config::Config;
+use self::config::{Config, LaunchMode};
 use self::hotkey::Hotkey;
+use self::launcher::InstalledApp;
 use super::{Module, ModuleContext};
 use crate::ipc::{HostSender, Notice, NoticeAction, Responder};
 use crate::logging::log_line;
@@ -76,6 +82,13 @@ enum Source {
     Text,
 }
 
+/// Ce qu'il faut faire du texte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Action {
+    Read,
+    TranslateThenRead,
+}
+
 /// La dernière lecture, montrée par la page et le widget.
 #[derive(Debug, Clone, Serialize)]
 struct LastRead {
@@ -83,6 +96,8 @@ struct LastRead {
     source: Source,
     chars: usize,
     truncated: bool,
+    /// Langue d'origine, quand le texte a été traduit.
+    translated_from: Option<String>,
     error: Option<String>,
 }
 
@@ -128,9 +143,26 @@ impl Shared {
     }
 }
 
-/// Envoie un texte vers l'outil. La lecture automatique reste à débloquer
-/// ensuite, hors du fil de l'interface (`launcher::activate`).
-fn speak(shared: &Shared, config: &Config, text: &str, source: Source) -> Result<LastRead> {
+/// Coupe un texte à `limit` caractères (0 : aucune limite) et dit s'il l'a
+/// fait.
+fn bounded(text: String, limit: usize) -> (String, bool) {
+    if limit > 0 && text.chars().count() > limit {
+        (text.chars().take(limit).collect(), true)
+    } else {
+        (text, false)
+    }
+}
+
+/// Envoie un texte vers l'outil, traduit au passage si `action` le demande.
+/// La lecture automatique reste à débloquer ensuite, hors du fil de
+/// l'interface (`launcher::activate`).
+fn speak(
+    shared: &Shared,
+    config: &Config,
+    text: &str,
+    source: Source,
+    action: Action,
+) -> Result<LastRead> {
     let unbounded = Config {
         max_chars: 0,
         ..config.clone()
@@ -139,28 +171,40 @@ fn speak(shared: &Shared, config: &Config, text: &str, source: Source) -> Result
     if unbounded.is_empty() {
         return Err(anyhow!("rien à lire\u{a0}: le texte est vide"));
     }
-    let truncated = config.max_chars > 0 && unbounded.chars().count() > config.max_chars;
-    let prepared: String = if truncated {
-        unbounded.chars().take(config.max_chars).collect()
-    } else {
-        unbounded
+    let (prepared, mut truncated) = bounded(unbounded, config.max_chars);
+
+    let (spoken, translated_from, reading) = match action {
+        Action::Read => (prepared, None, config.clone()),
+        Action::TranslateThenRead => {
+            let language = &config.translate_target;
+            let translation = translate::translate(&prepared, language)?;
+            // Une traduction peut être plus longue que l'original.
+            let (spoken, cut) = bounded(translation.text, config.max_chars);
+            truncated |= cut;
+            (spoken, translation.source, config.speaking(language))
+        }
     };
 
-    let target = launcher::build_url(config, &prepared);
-    let chars = prepared.chars().count();
+    let target = launcher::build_url(&reading, &spoken);
+    let chars = spoken.chars().count();
     log_line!(
-        "synthèse vocale : {chars} caractères ({} octets d'adresse){}",
+        "synthèse vocale : {chars} caractères ({} octets d'adresse){}{}",
         target.len(),
-        if truncated { ", texte tronqué" } else { "" }
+        if truncated { ", texte tronqué" } else { "" },
+        match &translated_from {
+            Some(language) => format!(", traduit depuis {language}"),
+            None => String::new(),
+        }
     );
 
-    launcher::launch(config, &target)?;
+    launcher::launch(&reading, &target)?;
 
     let read = LastRead {
         at: now_ms(),
         source,
         chars,
         truncated,
+        translated_from,
         error: None,
     };
     shared.record(read.clone());
@@ -168,7 +212,12 @@ fn speak(shared: &Shared, config: &Config, text: &str, source: Source) -> Result
 }
 
 /// Lecture du presse-papiers, avec la configuration donnée.
-fn speak_clipboard(shared: &Shared, config: &Config, source: Source) -> Result<LastRead> {
+fn speak_clipboard(
+    shared: &Shared,
+    config: &Config,
+    source: Source,
+    action: Action,
+) -> Result<LastRead> {
     if config.beep {
         unsafe {
             let _ = MessageBeep(MB_OK);
@@ -179,16 +228,16 @@ fn speak_clipboard(shared: &Shared, config: &Config, source: Source) -> Result<L
     if text.trim().is_empty() {
         return Err(anyhow!("le presse-papiers ne contient aucun texte"));
     }
-    speak(shared, config, &text, source)
+    speak(shared, config, &text, source, action)
 }
 
-/// Appui sur le raccourci global : le fil du raccourci rend la main tout de
-/// suite, la lecture se fait à côté.
-fn on_hotkey(shared: &Arc<Shared>) {
+/// Appui sur un raccourci global : son fil rend la main tout de suite, la
+/// lecture se fait à côté.
+fn on_hotkey(shared: &Arc<Shared>, action: Action) {
     let shared = shared.clone();
     std::thread::spawn(move || {
         let config = shared.config.lock().unwrap().clone();
-        match speak_clipboard(&shared, &config, Source::Hotkey) {
+        match speak_clipboard(&shared, &config, Source::Hotkey, action) {
             Ok(_) => launcher::activate(&config),
             Err(error) => {
                 failed(&shared, Source::Hotkey, &error);
@@ -207,6 +256,7 @@ fn failed(shared: &Shared, source: Source, error: &anyhow::Error) -> String {
         source,
         chars: 0,
         truncated: false,
+        translated_from: None,
         error: Some(message.clone()),
     });
     if source == Source::Hotkey {
@@ -221,25 +271,45 @@ fn failed(shared: &Shared, source: Source, error: &anyhow::Error) -> String {
     message
 }
 
-/// Réglages de démarrage : ceux du module, ou, au tout premier lancement,
-/// ceux de l'ancien programme, ou les valeurs par défaut complétées de la PWA
-/// Just Tools si Edge l'a installée.
-fn initial_config() -> Config {
-    if Config::exists() {
-        return Config::load();
-    }
+/// Rattache les réglages à la PWA réellement installée.
+///
+/// Un identifiant mort est remplacé : Edge ne ferait rien de lui. Le mode
+/// *PWA* n'est imposé qu'une fois, aux réglages d'avant le format 1, qui
+/// n'avaient jamais pu le choisir : après cela, le choix de l'utilisateur
+/// fait foi.
+fn adopt_installed_app(mut config: Config, app: Option<InstalledApp>, installed: bool) -> Config {
+    let Some(app) = app else { return config };
 
-    let config = legacy::import_config().unwrap_or_else(|| {
-        let mut config = Config::default();
-        if let Some(app) = launcher::detect_just_tools_app() {
-            log_line!("PWA Just Tools détectée : {} ({})", app.id, app.profile);
-            config.app_id = Some(app.id);
-            config.profile_directory = Some(app.profile);
-        }
-        config
-    });
-    let config = config.normalized();
-    if let Err(error) = config.save() {
+    if !installed {
+        log_line!("PWA détectée : {} ({})", app.id, app.profile);
+        config.app_id = Some(app.id);
+        config.profile_directory = Some(app.profile);
+    }
+    if config.schema < config::SCHEMA && config.launch_mode == LaunchMode::App {
+        log_line!("mode d'ouverture : la PWA installée remplace la fenêtre applicative");
+        config.launch_mode = LaunchMode::Pwa;
+    }
+    config
+}
+
+/// Réglages de démarrage : ceux du module ou, au tout premier lancement,
+/// ceux de l'ancien programme ou les valeurs par défaut ; rattachés dans tous
+/// les cas à la PWA installée.
+fn initial_config() -> Config {
+    let exists = Config::exists();
+    let stored = if exists {
+        Config::load()
+    } else {
+        legacy::import_config().unwrap_or_default()
+    };
+
+    let app = launcher::detect_app(&stored.base_url);
+    let installed = launcher::is_installed(&stored);
+    let config = adopt_installed_app(stored.clone(), app, installed).normalized();
+
+    if (!exists || config != stored)
+        && let Err(error) = config.save()
+    {
         log_line!("réglages de la synthèse vocale non enregistrés : {error:#}");
     }
     config
@@ -271,9 +341,21 @@ fn browse_for_browser() -> Option<String> {
     Some(String::from_utf16_lossy(&buffer[..end]))
 }
 
+/// Remplace la combinaison d'un raccourci. Refusée, l'ancienne reste en place
+/// et les réglages la reprennent ; la raison est rendue.
+fn apply_hotkey(hotkey: Option<&Arc<Hotkey>>, spec: &mut String) -> Option<String> {
+    let hotkey = hotkey?;
+    let error = hotkey.set(spec).err()?;
+    if let Some(active) = hotkey.status().active {
+        *spec = active;
+    }
+    Some(sentence(&error))
+}
+
 pub struct Speech {
     shared: Arc<Shared>,
     hotkey: Mutex<Option<Arc<Hotkey>>>,
+    translate_hotkey: Mutex<Option<Arc<Hotkey>>>,
 }
 
 impl Speech {
@@ -285,11 +367,16 @@ impl Speech {
                 host: Mutex::new(None),
             }),
             hotkey: Mutex::new(None),
+            translate_hotkey: Mutex::new(None),
         }
     }
 
     fn hotkey(&self) -> Option<Arc<Hotkey>> {
         self.hotkey.lock().unwrap().clone()
+    }
+
+    fn translate_hotkey(&self) -> Option<Arc<Hotkey>> {
+        self.translate_hotkey.lock().unwrap().clone()
     }
 
     fn hotkey_status(&self) -> hotkey::Status {
@@ -298,15 +385,64 @@ impl Speech {
             .unwrap_or_default()
     }
 
+    fn translate_hotkey_status(&self) -> hotkey::Status {
+        self.translate_hotkey()
+            .map(|hotkey| hotkey.status())
+            .unwrap_or_default()
+    }
+
+    /// Les deux raccourcis, le temps de suspendre ou de rétablir : la page
+    /// en capture une combinaison, qui ne doit déclencher aucun des deux.
+    fn hotkeys(&self) -> impl Iterator<Item = Arc<Hotkey>> {
+        [self.hotkey(), self.translate_hotkey()]
+            .into_iter()
+            .flatten()
+    }
+
     fn state(&self) -> Value {
         json!({
             "config": *self.shared.config.lock().unwrap(),
             "hotkey": self.hotkey_status(),
+            "translateHotkey": self.translate_hotkey_status(),
             "last": *self.shared.last.lock().unwrap(),
             "legacy": legacy::traces(),
             "edge": launcher::detected_edge().map(|path| path.display().to_string()),
             "maxCharsLimit": config::MAX_CHARS_LIMIT,
         })
+    }
+
+    /// Démarre le fil d'un raccourci et lui donne sa combinaison. Un refus de
+    /// Windows n'arrête rien : le raccourci reste à régler depuis la page.
+    fn start_hotkey(&self, spec: &str, action: Action) -> Option<Arc<Hotkey>> {
+        let shared = self.shared.clone();
+        let hotkey = match Hotkey::start(move || on_hotkey(&shared, action)) {
+            Ok(hotkey) => Arc::new(hotkey),
+            Err(error) => {
+                log_line!("raccourci de synthèse vocale indisponible : {error:#}");
+                return None;
+            }
+        };
+
+        if let Err(error) = hotkey.set(spec) {
+            let traces = legacy::traces();
+            let body = if traces.running > 0 {
+                format!(
+                    "{} L’ancien programme tts-hotkey tourne encore et le détient\u{a0}: retirez-le depuis la page Synthèse vocale.",
+                    sentence(&error)
+                )
+            } else {
+                sentence(&error)
+            };
+            let (id, title) = match action {
+                Action::Read => ("hotkey", "Raccourci de synthèse vocale indisponible"),
+                Action::TranslateThenRead => {
+                    ("translate-hotkey", "Raccourci de traduction indisponible")
+                }
+            };
+            self.shared.notify(id, title, body, "warning", None);
+        }
+
+        Some(hotkey)
     }
 
     /// Configuration envoyée par la page, validée.
@@ -322,9 +458,26 @@ impl Speech {
         if config.base_url.is_empty() {
             return Err(anyhow!("l’adresse du site ne peut pas être vide"));
         }
-        if !config.hotkey.is_empty() {
-            hotkey::parse(&config.hotkey)
-                .map_err(|error| anyhow!("raccourci invalide\u{a0}: {error:#}"))?;
+        if !translate::is_language(&config.translate_target) {
+            return Err(anyhow!(
+                "«\u{a0}{}\u{a0}» n’est pas un code de langue",
+                config.translate_target
+            ));
+        }
+
+        let parsed = [&config.hotkey, &config.translate_hotkey].map(|spec| {
+            (!spec.is_empty())
+                .then(|| hotkey::parse(spec))
+                .transpose()
+                .map_err(|error| anyhow!("raccourci invalide\u{a0}: {error:#}"))
+        });
+        let [read, translation] = parsed;
+        if let (Some(read), Some(translation)) = (read?, translation?)
+            && (read.modifiers, read.key) == (translation.modifiers, translation.key)
+        {
+            return Err(anyhow!(
+                "la lecture et la traduction ne peuvent pas partager le même raccourci"
+            ));
         }
         Ok(config)
     }
@@ -334,16 +487,18 @@ impl Speech {
     /// dit.
     fn save(&self, params: &Value) -> Result<Value> {
         let mut config = Self::config_param(params)?;
-        let mut warning = None;
 
-        if let Some(hotkey) = self.hotkey()
-            && let Err(error) = hotkey.set(&config.hotkey)
-        {
-            if let Some(active) = hotkey.status().active {
-                config.hotkey = active;
-            }
-            warning = Some(sentence(&error));
-        }
+        let warnings: Vec<String> = [
+            apply_hotkey(self.hotkey().as_ref(), &mut config.hotkey),
+            apply_hotkey(
+                self.translate_hotkey().as_ref(),
+                &mut config.translate_hotkey,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let warning = (!warnings.is_empty()).then(|| warnings.join(" "));
 
         config.save()?;
         *self.shared.config.lock().unwrap() = config;
@@ -377,11 +532,16 @@ impl Speech {
                     .get("text")
                     .and_then(Value::as_str)
                     .map(str::to_string);
+                let action = if params.get("translate").and_then(Value::as_bool) == Some(true) {
+                    Action::TranslateThenRead
+                } else {
+                    Action::Read
+                };
 
                 std::thread::spawn(move || {
                     let result = match &text {
-                        Some(text) => speak(&shared, &config, text, Source::Text),
-                        None => speak_clipboard(&shared, &config, Source::Page),
+                        Some(text) => speak(&shared, &config, text, Source::Text, action),
+                        None => speak_clipboard(&shared, &config, Source::Page, action),
                     };
                     match result {
                         Ok(read) => {
@@ -425,16 +585,12 @@ impl Speech {
             }
 
             "hotkey.suspend" => {
-                if let Some(hotkey) = self.hotkey() {
-                    hotkey.suspend();
-                }
+                self.hotkeys().for_each(|hotkey| hotkey.suspend());
                 reply.ok(Value::Null);
             }
 
             "hotkey.resume" => {
-                if let Some(hotkey) = self.hotkey() {
-                    hotkey.resume();
-                }
+                self.hotkeys().for_each(|hotkey| hotkey.resume());
                 reply.ok(Value::Null);
             }
 
@@ -494,38 +650,12 @@ impl Module for Speech {
         *self.shared.host.lock().unwrap() = Some(context.host);
 
         let config = initial_config();
-        let spec = config.hotkey.clone();
+        let (read_spec, translate_spec) = (config.hotkey.clone(), config.translate_hotkey.clone());
         *self.shared.config.lock().unwrap() = config;
 
-        let shared = self.shared.clone();
-        let hotkey = match Hotkey::start(move || on_hotkey(&shared)) {
-            Ok(hotkey) => Arc::new(hotkey),
-            Err(error) => {
-                log_line!("raccourci de synthèse vocale indisponible : {error:#}");
-                return;
-            }
-        };
-
-        if let Err(error) = hotkey.set(&spec) {
-            let traces = legacy::traces();
-            let body = if traces.running > 0 {
-                format!(
-                    "{} L’ancien programme tts-hotkey tourne encore et le détient\u{a0}: retirez-le depuis la page Synthèse vocale.",
-                    sentence(&error)
-                )
-            } else {
-                sentence(&error)
-            };
-            self.shared.notify(
-                "hotkey",
-                "Raccourci de synthèse vocale indisponible",
-                body,
-                "warning",
-                None,
-            );
-        }
-
-        *self.hotkey.lock().unwrap() = Some(hotkey);
+        *self.hotkey.lock().unwrap() = self.start_hotkey(&read_spec, Action::Read);
+        *self.translate_hotkey.lock().unwrap() =
+            self.start_hotkey(&translate_spec, Action::TranslateThenRead);
     }
 
     fn handle(&self, method: &str, params: Value, reply: Responder) {
@@ -553,5 +683,57 @@ impl Module for Speech {
         if let Some(hotkey) = self.hotkey.lock().unwrap().take() {
             hotkey.stop();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn live_app() -> InstalledApp {
+        InstalledApp {
+            id: "vivante".to_string(),
+            name: "Just Tools".to_string(),
+            profile: "Profile 1".to_string(),
+            url: Some("https://just-tools.ascencia.re/".to_string()),
+        }
+    }
+
+    #[test]
+    fn a_dead_app_id_is_replaced() {
+        let config = Config {
+            app_id: Some("morte".into()),
+            profile_directory: Some("Default".into()),
+            ..Config::default()
+        };
+        let adopted = adopt_installed_app(config, Some(live_app()), false);
+        assert_eq!(adopted.app_id.as_deref(), Some("vivante"));
+        assert_eq!(adopted.profile_directory.as_deref(), Some("Profile 1"));
+        assert_eq!(adopted.launch_mode, LaunchMode::Pwa);
+    }
+
+    #[test]
+    fn a_choice_made_since_the_migration_is_kept() {
+        let config = Config {
+            schema: config::SCHEMA,
+            launch_mode: LaunchMode::App,
+            app_id: Some("vivante".into()),
+            ..Config::default()
+        };
+        let adopted = adopt_installed_app(config, Some(live_app()), true);
+        assert_eq!(adopted.launch_mode, LaunchMode::App);
+    }
+
+    #[test]
+    fn nothing_changes_without_an_installed_app() {
+        let adopted = adopt_installed_app(Config::default(), None, false);
+        assert_eq!(adopted, Config::default());
+    }
+
+    #[test]
+    fn bounding_counts_characters() {
+        assert_eq!(bounded("été".to_string(), 2), ("ét".to_string(), true));
+        assert_eq!(bounded("été".to_string(), 3), ("été".to_string(), false));
+        assert_eq!(bounded("été".to_string(), 0), ("été".to_string(), false));
     }
 }

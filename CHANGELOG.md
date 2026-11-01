@@ -6,6 +6,24 @@ respectent le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+
+- Synthèse vocale : un second raccourci (`Ctrl+Alt+T` par défaut) traduit le
+  presse-papiers avant de le lire. La langue d'origine est détectée, la langue
+  cible se règle (français par défaut) et la voix suit cette langue. Boutons
+  *Traduire et lire* sur la page Lecture. La traduction passe par MyMemory,
+  service gratuit et sans compte, limité à environ 5 000 caractères par jour.
+
+### Corrigé
+
+- Synthèse vocale : le raccourci ouvrait une fenêtre par lecture alors que la
+  PWA Just Tools était installée. Atelier passe une fois pour toutes sur la
+  PWA quand elle existe : le texte arrive dans sa fenêtre déjà ouverte.
+- Synthèse vocale : la détection de la PWA retenait une application
+  désinstallée, dont Edge laisse l'icône sur le disque, et manquait la vraie.
+  Un identifiant périmé est désormais remplacé au démarrage, et un identifiant
+  inconnu retombe sur la fenêtre applicative au lieu de ne rien lire.
+
 ## [0.3.1] - 2026-10-29
 
 ### Ajouté

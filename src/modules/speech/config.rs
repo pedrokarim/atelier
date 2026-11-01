@@ -20,13 +20,22 @@ pub enum LaunchMode {
     Tab,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Version du format des réglages. Un fichier plus ancien (0) n'a jamais eu
+/// l'occasion de choisir la PWA installée : voir `adopt_installed_app`.
+pub const SCHEMA: u32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub schema: u32,
     /// Racine du site, ou URL complète de l'outil.
     pub base_url: String,
     /// Raccourci global, par exemple « Ctrl+Alt+S » ; vide, aucun raccourci.
     pub hotkey: String,
+    /// Raccourci qui traduit avant de lire ; vide, aucun raccourci.
+    pub translate_hotkey: String,
+    /// Langue vers laquelle traduire (« fr », « en »…).
+    pub translate_target: String,
     pub launch_mode: LaunchMode,
     /// Chemin de msedge.exe ; détecté automatiquement si absent.
     pub edge_path: Option<String>,
@@ -70,8 +79,11 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            schema: 0,
             base_url: "https://just-tools.ascencia.re".to_string(),
             hotkey: "Ctrl+Alt+S".to_string(),
+            translate_hotkey: "Ctrl+Alt+T".to_string(),
+            translate_target: DEFAULT_TRANSLATE_TARGET.to_string(),
             launch_mode: LaunchMode::App,
             edge_path: None,
             app_id: None,
@@ -98,6 +110,8 @@ impl Default for Config {
 /// Plafond de `max_chars` : la ligne de commande Windows est limitée à
 /// 32 767 caractères, et le base64 gonfle un texte accentué.
 pub const MAX_CHARS_LIMIT: usize = 16_000;
+
+const DEFAULT_TRANSLATE_TARGET: &str = "fr";
 
 impl Config {
     fn path() -> Result<std::path::PathBuf> {
@@ -141,8 +155,14 @@ impl Config {
             }
         }
 
+        self.schema = SCHEMA;
         self.base_url = self.base_url.trim().to_string();
         self.hotkey = self.hotkey.trim().to_string();
+        self.translate_hotkey = self.translate_hotkey.trim().to_string();
+        self.translate_target = self.translate_target.trim().to_string();
+        if self.translate_target.is_empty() {
+            self.translate_target = DEFAULT_TRANSLATE_TARGET.to_string();
+        }
         self.window_title_match = self.window_title_match.trim().to_string();
         blank_to_none(&mut self.edge_path);
         blank_to_none(&mut self.app_id);
@@ -155,6 +175,26 @@ impl Config {
         self.max_chars = self.max_chars.min(MAX_CHARS_LIMIT);
         self.activation_delay_ms = self.activation_delay_ms.min(10_000);
         self
+    }
+
+    /// Les réglages pour lire un texte en `language` : la voix et la langue
+    /// configurées ne valent que si elles parlent déjà cette langue, sinon
+    /// c'est à la page de choisir une voix adaptée.
+    pub fn speaking(&self, language: &str) -> Config {
+        let primary = |code: &str| code.split('-').next().unwrap_or_default().to_lowercase();
+        let already = self
+            .lang
+            .as_deref()
+            .is_some_and(|lang| primary(lang) == primary(language));
+
+        if already {
+            return self.clone();
+        }
+        Config {
+            voice: None,
+            lang: Some(language.to_string()),
+            ..self.clone()
+        }
     }
 
     /// Prépare le texte du presse-papiers avant envoi.
@@ -230,6 +270,31 @@ mod tests {
         };
         assert_eq!(config.prepare_text("exem-\nple simple"), "exemple simple");
         assert_eq!(config.prepare_text("bien-être"), "bien-être");
+    }
+
+    #[test]
+    fn older_files_keep_their_schema_until_normalized() {
+        let config: Config = serde_json::from_str(r#"{"hotkey":"Ctrl+Alt+S"}"#).unwrap();
+        assert_eq!(config.schema, 0);
+        assert_eq!(config.translate_hotkey, "Ctrl+Alt+T");
+        assert_eq!(config.translate_target, "fr");
+        assert_eq!(config.normalized().schema, SCHEMA);
+    }
+
+    #[test]
+    fn a_translation_gets_a_voice_of_its_language() {
+        let config = Config {
+            voice: Some("Jenny".into()),
+            lang: Some("en-US".into()),
+            ..Config::default()
+        };
+        let french = config.speaking("fr");
+        assert_eq!(french.voice, None);
+        assert_eq!(french.lang.as_deref(), Some("fr"));
+
+        let english = config.speaking("en");
+        assert_eq!(english.voice.as_deref(), Some("Jenny"));
+        assert_eq!(english.lang.as_deref(), Some("en-US"));
     }
 
     #[test]

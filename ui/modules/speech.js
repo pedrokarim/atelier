@@ -1,7 +1,7 @@
 /*
   Module « Synthèse vocale », moitié page : l'état du raccourci, la lecture
   d'un texte, et les réglages. La moitié Rust (`src/modules/speech`) détient
-  le raccourci global, lit le presse-papiers et ouvre Edge.
+  les raccourcis globaux, lit le presse-papiers, traduit et ouvre Edge.
 */
 
 const MODULE = "speech";
@@ -18,9 +18,12 @@ style.textContent = `
 .sp-keys.big kbd { min-width: 34px; height: 34px; padding: 0 11px; font-size: 14px; }
 .sp-keys.none { color: var(--muted); font-size: 12.5px; }
 
+.sp-shortcuts { display: grid; gap: 16px; }
+.sp-shortcut { min-width: 0; }
+.sp-shortcut-title { margin-bottom: 8px; color: var(--text-2); font-size: 12.5px; font-weight: 600; }
 .sp-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
 .sp-status .sp-keys { flex: 0 1 auto; }
-.sp-error { margin-top: 10px; color: var(--critical-text); font-size: 12px; }
+.sp-error { margin-top: 10px; color: var(--critical-text); font-size: 12px; overflow-wrap: anywhere; }
 
 /* Bouton de capture du raccourci. */
 .sp-hotkey { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 6px 11px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text-2); font: inherit; text-align: left; cursor: pointer; }
@@ -106,20 +109,32 @@ function hotkeyState(hotkey) {
   return `<span class="badge">Désactivé</span>`;
 }
 
+const languages = new Intl.DisplayNames(["fr"], { type: "language" });
+
+/* Le nom d'une langue : « japonais » pour `ja`, le code s'il est inconnu. */
+function languageName(code) {
+  try {
+    return languages.of(code);
+  } catch {
+    return code;
+  }
+}
+
 function lastReadText(last) {
   if (!last) return "Aucune lecture depuis le lancement d’Atelier.";
   const time = new Date(last.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   if (last.error) return `${time}${T.sep}${last.error}`;
   const chars = `${integer.format(last.chars)}${NB}caractère${last.chars > 1 ? "s" : ""}`;
-  return `${time}${T.sep}${chars}, ${SOURCES[last.source] || ""}${last.truncated ? " (tronqué)" : ""}`;
+  const origin = last.translated_from ? `, traduit (langue d’origine${NB}: ${languageName(last.translated_from)})` : "";
+  return `${time}${T.sep}${chars}, ${SOURCES[last.source] || ""}${origin}${last.truncated ? " (tronqué)" : ""}`;
 }
 
 /* « 1,2 » pour 1.2 : la virgule décimale, usage français. */
 const decimalText = (value) => (value == null ? "" : String(value).replace(".", ","));
 
-async function readClipboard(request, config) {
+async function readClipboard(request, { config, translate = false } = {}) {
   try {
-    const read = await request("speak", config ? { config } : {});
+    const read = await request("speak", { ...(config ? { config } : {}), translate });
     T.toast(`${integer.format(read.chars)}${NB}caractère${read.chars > 1 ? "s" : ""} envoyé${read.chars > 1 ? "s" : ""} à la synthèse vocale${read.truncated ? ", texte tronqué" : ""}.`, "success");
   } catch (error) {
     T.toast(error.message, "error");
@@ -145,30 +160,43 @@ function legacyCard(legacy) {
     </section>`;
 }
 
+function shortcutBlock(title, hotkey) {
+  return `
+    <div class="sp-shortcut">
+      <div class="sp-shortcut-title">${title}</div>
+      <div class="sp-status">
+        ${keysHtml(hotkey.active || hotkey.refused, true)}
+        ${hotkeyState(hotkey)}
+      </div>
+      ${hotkey.error ? `<div class="sp-error">${T.escape(hotkey.error)}.</div>` : ""}
+    </div>`;
+}
+
 async function renderRead(root, ctx) {
   let state = await ctx.request("state");
 
   function render() {
-    const { hotkey, legacy } = state;
+    const { hotkey, translateHotkey, legacy, config } = state;
     const legacyPresent = legacy.running || legacy.installed || legacy.autostart || legacy.shortcut;
+    const target = languageName(config.translate_target);
 
     root.innerHTML = pageHead(
       "Synthèse vocale",
-      "Le raccourci envoie le contenu du presse-papiers vers la synthèse vocale de Just Tools, qui démarre la lecture toute seule.",
-      `<button class="btn btn-primary" id="speakClipboard" type="button">${T.icon("clipboard", 15)}Lire le presse-papiers</button>`,
+      "Un raccourci fait lire le presse-papiers par la synthèse vocale de Just Tools, un autre le traduit d’abord. La lecture démarre toute seule.",
+      `<button class="btn" id="translateClipboard" type="button">${T.icon("languages", 15)}Traduire et lire</button>
+       <button class="btn btn-primary" id="speakClipboard" type="button">${T.icon("clipboard", 15)}Lire le presse-papiers</button>`,
     ) + `
       <div class="stack" style="max-width:760px">
         ${legacyPresent ? legacyCard(legacy) : ""}
 
         <section class="card">
-          <div class="card-head"><div class="card-title">Raccourci</div></div>
-          <div class="sp-status">
-            ${keysHtml(hotkey.active || hotkey.refused, true)}
-            ${hotkeyState(hotkey)}
+          <div class="card-head"><div class="card-title">Raccourcis</div></div>
+          <div class="sp-shortcuts">
+            ${shortcutBlock("Lire", hotkey)}
+            ${shortcutBlock(`Traduire en ${T.escape(target)}, puis lire`, translateHotkey)}
           </div>
-          ${hotkey.error ? `<div class="sp-error">${T.escape(hotkey.error)}.</div>` : ""}
-          <div class="field-hint">Copiez un texte n’importe où, puis appuyez sur le raccourci${NB}: Edge s’ouvre et lit.</div>
-          <div class="card-actions"><button class="btn" id="changeHotkey" type="button">${T.icon("keyboard", 15)}Changer le raccourci</button></div>
+          <div class="field-hint">Copiez un texte n’importe où, puis appuyez sur un raccourci${NB}: la fenêtre de la synthèse vocale le reçoit et le lit.</div>
+          <div class="card-actions"><button class="btn" id="changeHotkey" type="button">${T.icon("keyboard", 15)}Changer les raccourcis</button></div>
         </section>
 
         <section class="card">
@@ -176,6 +204,7 @@ async function renderRead(root, ctx) {
           <textarea class="input sp-textarea" id="text" spellcheck="true" placeholder="Saisissez ou collez le texte à lire"></textarea>
           <div class="sp-row-end">
             <span class="sp-count" id="count"></span>
+            <button class="btn" id="translateText" type="button">${T.icon("languages", 15)}Traduire et lire</button>
             <button class="btn" id="speakText" type="button">${T.icon("play", 15)}Lire ce texte</button>
           </div>
         </section>
@@ -198,20 +227,24 @@ async function renderRead(root, ctx) {
     text.addEventListener("input", updateCount);
     updateCount();
 
-    root.querySelector("#speakClipboard").addEventListener("click", () => readClipboard(ctx.request));
-    root.querySelector("#changeHotkey").addEventListener("click", () => ctx.navigate("settings"));
-    root.querySelector("#speakText").addEventListener("click", async () => {
+    const speakText = async (translate) => {
       if (!text.value.trim()) {
         T.toast("Le texte est vide.", "error");
         text.focus();
         return;
       }
       try {
-        await ctx.request("speak", { text: text.value });
+        await ctx.request("speak", { text: text.value, translate });
       } catch (error) {
         T.toast(error.message, "error");
       }
-    });
+    };
+
+    root.querySelector("#speakClipboard").addEventListener("click", () => readClipboard(ctx.request));
+    root.querySelector("#translateClipboard").addEventListener("click", () => readClipboard(ctx.request, { translate: true }));
+    root.querySelector("#changeHotkey").addEventListener("click", () => ctx.navigate("settings"));
+    root.querySelector("#speakText").addEventListener("click", () => speakText(false));
+    root.querySelector("#translateText").addEventListener("click", () => speakText(true));
 
     const remove = root.querySelector("#removeLegacy");
     if (remove) {
@@ -289,16 +322,114 @@ function text(id, label, value, { placeholder = "", hint = "", mode = "" } = {})
     </div>`;
 }
 
+/*
+  Capture d'une combinaison sur un bouton. La capture démarre sur une action
+  délibérée, jamais sur le simple focus. Les raccourcis globaux sont suspendus
+  pendant ce temps : sans cela, composer une combinaison existante lancerait
+  une lecture au lieu d'être saisie.
+*/
+function hotkeyCapture(button, hint, initial, ctx) {
+  let current = initial;
+  let previous = initial;
+  let capturing = false;
+
+  function render() {
+    button.innerHTML = capturing
+      ? `<span class="sp-prompt">Composez la combinaison…</span>${T.icon("keyboard", 16)}`
+      : `${keysHtml(current)}${T.icon("keyboard", 16)}`;
+  }
+
+  function start() {
+    if (capturing) return;
+    capturing = true;
+    previous = current;
+    button.classList.add("capturing");
+    button.classList.remove("invalid");
+    hint.textContent = "Composez la combinaison. Échap annule, Suppr retire le raccourci.";
+    render();
+    ctx.request("hotkey.suspend").catch(() => {});
+  }
+
+  function stop(restore) {
+    if (!capturing) return;
+    capturing = false;
+    if (restore) current = previous;
+    button.classList.remove("capturing");
+    hint.textContent = HOTKEY_HINT;
+    render();
+    ctx.request("hotkey.resume").catch(() => {});
+  }
+
+  button.addEventListener("click", start);
+  button.addEventListener("blur", () => stop(false));
+  ctx.onCleanup(() => stop(true));
+
+  button.addEventListener("keydown", (event) => {
+    if (!capturing) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Échap rend la combinaison précédente : une capture lancée par erreur
+    // ne doit rien coûter.
+    if (event.key === "Escape") {
+      stop(true);
+      button.blur();
+      return;
+    }
+    // Un modificateur seul ne forme pas encore un raccourci.
+    if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
+
+    if ((event.key === "Delete" || event.key === "Backspace")
+        && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+      current = "";
+      stop(false);
+      button.blur();
+      return;
+    }
+
+    const name = keyName(event);
+    if (!name) return;
+
+    const parts = [];
+    if (event.ctrlKey) parts.push("Ctrl");
+    if (event.altKey) parts.push("Alt");
+    if (event.shiftKey) parts.push("Shift");
+    if (event.metaKey) parts.push("Win");
+
+    if (!parts.length) {
+      button.classList.add("invalid");
+      hint.textContent = `Ce raccourci serait actif partout, même en écrivant${NB}: ajoutez Ctrl, Alt, Shift ou Win.`;
+      return;
+    }
+
+    parts.push(name);
+    current = parts.join("+");
+    button.classList.remove("invalid");
+    stop(false);
+    button.blur();
+  });
+
+  render();
+
+  return {
+    get value() {
+      return current;
+    },
+    set(spec, refused) {
+      current = spec;
+      button.classList.toggle("invalid", refused);
+      render();
+    },
+  };
+}
+
 async function renderSettings(root, ctx) {
   const state = await ctx.request("state");
   const config = state.config;
-  let hotkey = config.hotkey;
-  let previous = hotkey;
-  let capturing = false;
 
   root.innerHTML = pageHead(
     "Réglages de la lecture",
-    "Le raccourci, la façon d’ouvrir l’outil, et ce qui est transmis à la page de synthèse vocale.",
+    "Les raccourcis, la façon d’ouvrir l’outil, et ce qui est transmis à la page de synthèse vocale.",
     `<button class="btn" id="test" type="button">${T.icon("play", 15)}Tester</button>
      <button class="btn btn-primary" id="save" type="button">${T.icon("check", 15)}Enregistrer</button>`,
   ) + `
@@ -343,6 +474,18 @@ async function renderSettings(root, ctx) {
             <div class="field-hint">${state.edge ? `Détecté${NB}: <span class="path" style="display:inline">${T.escape(state.edge)}</span>` : "Edge n’a pas été trouvé à son emplacement habituel."}</div>
           </div>
         </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div class="card-title">Traduction</div></div>
+        <div class="field-hint" style="margin-top:0">Ce raccourci traduit le presse-papiers avant de le lire, la langue d’origine étant détectée. Un texte déjà dans la langue choisie est lu tel quel.</div>
+        <div class="field">
+          <label class="field-label" for="translateHotkey">Raccourci de traduction</label>
+          <button class="sp-hotkey" id="translateHotkey" type="button"></button>
+          <div class="field-hint" id="translateHotkeyHint">${HOTKEY_HINT}</div>
+        </div>
+        ${text("translateTarget", "Traduire vers", config.translate_target, { placeholder: "fr", hint: `Un code de langue${NB}: fr, en, es, de, ja… La voix suit cette langue.` })}
+        <div class="field-hint">Le texte est envoyé à MyMemory (api.mymemory.translated.net), un service gratuit et sans compte, limité à environ 5${NB}000${NB}caractères par jour.</div>
       </section>
 
       <section class="card">
@@ -392,93 +535,8 @@ async function renderSettings(root, ctx) {
     </div>`;
 
   const $ = (id) => root.querySelector(`#${id}`);
-  const button = $("hotkey");
-  const hint = $("hotkeyHint");
-
-  /* --- Capture du raccourci -------------------------------------------- */
-
-  function renderHotkey() {
-    button.innerHTML = capturing
-      ? `<span class="sp-prompt">Composez la combinaison…</span>${T.icon("keyboard", 16)}`
-      : `${keysHtml(hotkey)}${T.icon("keyboard", 16)}`;
-  }
-
-  /*
-    La capture démarre sur une action délibérée, jamais sur le simple focus.
-    Le raccourci global est suspendu pendant ce temps : sans cela, composer
-    la combinaison actuelle lancerait une lecture au lieu d'être saisie.
-  */
-  function startCapture() {
-    if (capturing) return;
-    capturing = true;
-    previous = hotkey;
-    button.classList.add("capturing");
-    button.classList.remove("invalid");
-    hint.textContent = "Composez la combinaison. Échap annule, Suppr retire le raccourci.";
-    renderHotkey();
-    ctx.request("hotkey.suspend").catch(() => {});
-  }
-
-  function stopCapture(restore) {
-    if (!capturing) return;
-    capturing = false;
-    if (restore) hotkey = previous;
-    button.classList.remove("capturing");
-    hint.textContent = HOTKEY_HINT;
-    renderHotkey();
-    ctx.request("hotkey.resume").catch(() => {});
-  }
-
-  button.addEventListener("click", startCapture);
-  button.addEventListener("blur", () => stopCapture(false));
-  ctx.onCleanup(() => stopCapture(true));
-
-  button.addEventListener("keydown", (event) => {
-    if (!capturing) return;
-    event.preventDefault();
-    event.stopPropagation();
-
-    // Échap rend la combinaison précédente : une capture lancée par erreur
-    // ne doit rien coûter.
-    if (event.key === "Escape") {
-      stopCapture(true);
-      button.blur();
-      return;
-    }
-    // Un modificateur seul ne forme pas encore un raccourci.
-    if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
-
-    if ((event.key === "Delete" || event.key === "Backspace")
-        && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
-      hotkey = "";
-      stopCapture(false);
-      button.blur();
-      return;
-    }
-
-    const name = keyName(event);
-    if (!name) return;
-
-    const parts = [];
-    if (event.ctrlKey) parts.push("Ctrl");
-    if (event.altKey) parts.push("Alt");
-    if (event.shiftKey) parts.push("Shift");
-    if (event.metaKey) parts.push("Win");
-
-    if (!parts.length) {
-      button.classList.add("invalid");
-      hint.textContent = `Ce raccourci serait actif partout, même en écrivant${NB}: ajoutez Ctrl, Alt, Shift ou Win.`;
-      return;
-    }
-
-    parts.push(name);
-    hotkey = parts.join("+");
-    button.classList.remove("invalid");
-    stopCapture(false);
-    button.blur();
-  });
-
-  renderHotkey();
+  const readHotkey = hotkeyCapture($("hotkey"), $("hotkeyHint"), config.hotkey, ctx);
+  const translateHotkey = hotkeyCapture($("translateHotkey"), $("translateHotkeyHint"), config.translate_hotkey, ctx);
 
   /* --- Lecture des champs ---------------------------------------------- */
 
@@ -519,7 +577,9 @@ async function renderSettings(root, ctx) {
 
     const next = {
       base_url: value("baseUrl"),
-      hotkey,
+      hotkey: readHotkey.value,
+      translate_hotkey: translateHotkey.value,
+      translate_target: value("translateTarget"),
       launch_mode: mode ? mode.value : "app",
       edge_path: optional("edgePath"),
       app_id: optional("appId"),
@@ -555,11 +615,10 @@ async function renderSettings(root, ctx) {
     if (!next) return;
     try {
       const saved = await ctx.request("settings.save", { config: next });
-      hotkey = saved.config.hotkey;
-      renderHotkey();
+      readHotkey.set(saved.config.hotkey, Boolean(saved.hotkey.refused));
+      translateHotkey.set(saved.config.translate_hotkey, Boolean(saved.translateHotkey.refused));
       if (saved.warning) {
-        button.classList.add("invalid");
-        T.toast(`Réglages enregistrés, sauf le raccourci${NB}: ${saved.warning}`, "error");
+        T.toast(`Réglages enregistrés, sauf un raccourci${NB}: ${saved.warning}`, "error");
       } else {
         T.toast("Réglages enregistrés.", "success");
       }
@@ -572,7 +631,7 @@ async function renderSettings(root, ctx) {
   // l'intérêt d'un essai.
   $("test").addEventListener("click", () => {
     const next = collect();
-    if (next) readClipboard(ctx.request, next);
+    if (next) readClipboard(ctx.request, { config: next });
   });
 
   $("showPreview").addEventListener("click", async () => {
@@ -606,8 +665,8 @@ async function renderSettings(root, ctx) {
       T.toast("Aucune application installée dans Edge. Ouvrez le site dans Edge, puis menu « … » → Applications → « Installer ce site en tant qu’application ».", "error");
       return;
     }
-    const ranked = [...apps].sort((a, b) =>
-      Number(/just tools/i.test(b.name)) - Number(/just tools/i.test(a.name)) || a.name.localeCompare(b.name, "fr"));
+    const isJustTools = (app) => Number(/just[ -]tools/i.test(`${app.name} ${app.url || ""}`));
+    const ranked = [...apps].sort((a, b) => isJustTools(b) - isJustTools(a) || a.name.localeCompare(b.name, "fr"));
     T.dialog({
       title: "Applications installées dans Edge",
       subtitle: "Celle de Just Tools est proposée en premier.",
@@ -641,7 +700,7 @@ T.module({
   id: MODULE,
   name: "Synthèse vocale",
   icon: "speaker",
-  description: "Un raccourci global qui fait lire le presse-papiers par la synthèse vocale de Just Tools.",
+  description: "Des raccourcis globaux qui font lire le presse-papiers par la synthèse vocale de Just Tools, traduit ou non.",
   pages: [
     { id: "read", title: "Lecture", icon: "speaker", render: renderRead },
     { id: "settings", title: "Réglages", icon: "sliders", render: renderSettings },

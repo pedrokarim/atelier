@@ -1,7 +1,7 @@
 //! Construction de l'adresse de lecture, ouverture dans Microsoft Edge et
 //! déblocage de la lecture automatique.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
@@ -32,7 +32,7 @@ const VK_F24: u16 = 0x87;
 /* --- Adresse ------------------------------------------------------------- */
 
 /// Encode une valeur de paramètre d'URL (RFC 3986, caractères non réservés).
-fn percent_encode(value: &str) -> String {
+pub fn percent_encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
 
     for byte in value.as_bytes() {
@@ -100,6 +100,8 @@ pub struct InstalledApp {
     pub id: String,
     pub name: String,
     pub profile: String,
+    /// Adresse de départ, si le registre d'Edge la donne.
+    pub url: Option<String>,
 }
 
 /// Emplacements habituels de msedge.exe.
@@ -139,22 +141,113 @@ pub fn resolve_edge(config: &Config) -> Result<PathBuf> {
     })
 }
 
-/// Liste les PWA installées en inspectant les dossiers `Web Applications`
-/// d'Edge. Le nom de l'application est déduit du fichier `.ico` déposé par
-/// Edge.
-pub fn list_installed_apps() -> Vec<InstalledApp> {
-    let mut apps = Vec::new();
-
-    let Some(user_data) = std::env::var("LOCALAPPDATA").ok().map(|root| {
+fn edge_user_data() -> Option<PathBuf> {
+    std::env::var("LOCALAPPDATA").ok().map(|root| {
         PathBuf::from(root)
             .join("Microsoft")
             .join("Edge")
             .join("User Data")
-    }) else {
-        return apps;
+    })
+}
+
+/// Dossier qu'Edge tient à jour pour chaque PWA installée.
+fn manifest_resources(profile: &Path) -> PathBuf {
+    profile.join("Web Applications").join("Manifest Resources")
+}
+
+/// Une PWA désinstallée laisse son dossier `_crx__<id>` et son icône, mais
+/// perd ses ressources de manifeste : c'est donc à elles qu'on reconnaît une
+/// application qu'Edge sait encore lancer. Un chemin de navigateur
+/// personnalisé peut désigner une autre édition d'Edge, aux données
+/// ailleurs : on lui fait alors confiance.
+pub fn is_installed(config: &Config) -> bool {
+    let Some(id) = config.app_id.as_deref().filter(|id| !id.is_empty()) else {
+        return false;
+    };
+    if config.edge_path.is_some() {
+        return true;
+    }
+    let profile = config.profile_directory.as_deref().unwrap_or("Default");
+
+    edge_user_data().is_some_and(|user_data| {
+        manifest_resources(&user_data.join(profile))
+            .join(id)
+            .is_dir()
+    })
+}
+
+/// Fichiers du registre des applications d'Edge, une base LevelDB. Edge la
+/// garde ouverte, mais en autorise la lecture.
+fn read_app_registry(profile: &Path) -> Vec<Vec<u8>> {
+    let Ok(files) = std::fs::read_dir(profile.join("Sync Data").join("LevelDB")) else {
+        return Vec::new();
     };
 
-    let Ok(profiles) = std::fs::read_dir(&user_data) else {
+    files
+        .flatten()
+        .filter(|file| {
+            let name = file.file_name();
+            let name = name.to_string_lossy();
+            name.ends_with(".ldb") || name.ends_with(".log")
+        })
+        .filter_map(|file| std::fs::read(file.path()).ok())
+        .collect()
+}
+
+/// Cherche l'adresse de départ d'une application dans un fichier du registre.
+///
+/// Chaque fiche place cette adresse juste après l'identifiant, et LevelDB
+/// laisse lisible sa première apparition même compressée. Au-delà de
+/// `URL_DISTANCE` octets, l'adresse est celle de la fiche suivante.
+fn registered_url(registry: &[u8], id: &str) -> Option<String> {
+    const URL_DISTANCE: usize = 16;
+
+    let mut search = 0;
+    while let Some(found) = find_bytes(&registry[search..], id.as_bytes()) {
+        let start = search + found + id.len();
+        let near = &registry[start..registry.len().min(start + URL_DISTANCE + 8)];
+
+        if let Some(offset) = find_bytes(near, b"https://") {
+            let url: String = registry[start + offset..]
+                .iter()
+                .take_while(|byte| byte.is_ascii_graphic())
+                .map(|byte| *byte as char)
+                .collect();
+            return Some(url);
+        }
+        search = start;
+    }
+
+    None
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+/// L'hôte d'une adresse, en minuscules.
+fn host_of(url: &str) -> Option<String> {
+    let (_, rest) = url.split_once("://")?;
+    let host = rest.split(['/', ':', '?', '#']).next()?;
+    (!host.is_empty()).then(|| host.to_lowercase())
+}
+
+/// Le nom déposé par Edge à côté de l'icône de l'application, s'il y en a un.
+fn icon_name(web_apps: &Path, id: &str) -> Option<String> {
+    let files = std::fs::read_dir(web_apps.join(format!("_crx__{id}"))).ok()?;
+    files.flatten().find_map(|file| {
+        let file_name = file.file_name().to_string_lossy().to_string();
+        file_name.strip_suffix(".ico").map(str::to_string)
+    })
+}
+
+/// Liste les PWA installées, profil par profil.
+pub fn list_installed_apps() -> Vec<InstalledApp> {
+    let mut apps = Vec::new();
+
+    let Some(profiles) = edge_user_data().and_then(|path| std::fs::read_dir(path).ok()) else {
         return apps;
     };
 
@@ -164,34 +257,24 @@ pub fn list_installed_apps() -> Vec<InstalledApp> {
             continue;
         }
 
-        let Ok(entries) = std::fs::read_dir(profile.path().join("Web Applications")) else {
+        let path = profile.path();
+        let Ok(entries) = std::fs::read_dir(manifest_resources(&path)) else {
             continue;
         };
+        let registry = read_app_registry(&path);
 
         for entry in entries.flatten() {
-            let folder = entry.file_name().to_string_lossy().to_string();
-            // Edge nomme les dossiers `_crx__<app_id>`.
-            let Some(id) = folder
-                .strip_prefix("_crx__")
-                .or_else(|| folder.strip_prefix("_crx_"))
-            else {
-                continue;
-            };
-
-            let name = std::fs::read_dir(entry.path())
-                .ok()
-                .and_then(|files| {
-                    files.flatten().find_map(|file| {
-                        let file_name = file.file_name().to_string_lossy().to_string();
-                        file_name.strip_suffix(".ico").map(str::to_string)
-                    })
-                })
+            let id = entry.file_name().to_string_lossy().to_string();
+            let url = registry.iter().find_map(|file| registered_url(file, &id));
+            let name = icon_name(&path.join("Web Applications"), &id)
+                .or_else(|| url.as_deref().and_then(host_of))
                 .unwrap_or_else(|| "(nom inconnu)".to_string());
 
             apps.push(InstalledApp {
-                id: id.to_string(),
+                id,
                 name,
                 profile: profile_name.clone(),
+                url,
             });
         }
     }
@@ -199,11 +282,19 @@ pub fn list_installed_apps() -> Vec<InstalledApp> {
     apps
 }
 
-/// Cherche la PWA Just Tools parmi les applications installées.
-pub fn detect_just_tools_app() -> Option<InstalledApp> {
-    list_installed_apps()
-        .into_iter()
-        .find(|app| app.name.to_lowercase().contains("just tools"))
+/// Cherche, parmi les applications installées, celle du site `base_url`.
+pub fn detect_app(base_url: &str) -> Option<InstalledApp> {
+    let host = host_of(base_url)?;
+    let apps = list_installed_apps();
+    let by_host = apps
+        .iter()
+        .position(|app| app.url.as_deref().and_then(host_of).as_deref() == Some(host.as_str()));
+    let by_name = || {
+        apps.iter()
+            .position(|app| app.name.to_lowercase().contains("just tools"))
+    };
+
+    by_host.or_else(by_name).map(|index| apps[index].clone())
 }
 
 /// Lance l'URL dans Edge selon le mode configuré.
@@ -219,9 +310,11 @@ pub fn launch(config: &Config, url: &str) -> Result<()> {
         command.arg(format!("--profile-directory={profile}"));
     }
 
+    // Edge se termine sans rien dire sur un identifiant inconnu : mieux vaut
+    // une fenêtre de plus qu'une lecture perdue.
     let mode = match config.launch_mode {
-        LaunchMode::Pwa if config.app_id.as_deref().unwrap_or("").is_empty() => {
-            log_line!("mode PWA sans identifiant d'application : repli sur la fenêtre applicative");
+        LaunchMode::Pwa if !is_installed(config) => {
+            log_line!("PWA introuvable : repli sur la fenêtre applicative");
             LaunchMode::App
         }
         other => other,
@@ -416,6 +509,73 @@ mod tests {
         let encoded = url.split("b64=").nth(1).unwrap();
         let decoded = URL_SAFE_NO_PAD.decode(encoded).unwrap();
         assert_eq!(String::from_utf8(decoded).unwrap(), "Été");
+    }
+
+    const LIVE_ID: &str = "ljkcbphioghkcdigeialakdeoeehdlcp";
+
+    #[test]
+    fn reads_the_start_url_of_a_registry_record() {
+        let mut registry = b"\x00dt-".to_vec();
+        registry.extend_from_slice(LIVE_ID.as_bytes());
+        registry.extend_from_slice(b":\xcf\x01\x123https://just-tools.ascencia.re/\x12.Just Tools");
+        assert_eq!(
+            registered_url(&registry, LIVE_ID).as_deref(),
+            Some("https://just-tools.ascencia.re/")
+        );
+    }
+
+    #[test]
+    fn skips_records_without_a_nearby_url() {
+        // Première mention sans adresse, seconde avec : la fiche utile est
+        // la seconde.
+        let mut registry = LIVE_ID.as_bytes().to_vec();
+        registry.extend_from_slice(&[0; 64]);
+        registry.extend_from_slice(LIVE_ID.as_bytes());
+        registry.extend_from_slice(b"\x12https://exemple.fr/\x12");
+        assert_eq!(
+            registered_url(&registry, LIVE_ID).as_deref(),
+            Some("https://exemple.fr/")
+        );
+    }
+
+    #[test]
+    fn ignores_the_url_of_the_next_record() {
+        // Le cas d'une application désinstallée : l'adresse la plus proche
+        // appartient à la fiche suivante.
+        let mut registry = LIVE_ID.as_bytes().to_vec();
+        registry.extend_from_slice(&[0; 54]);
+        registry.extend_from_slice(b"https://autre.fr/");
+        assert_eq!(registered_url(&registry, LIVE_ID), None);
+    }
+
+    #[test]
+    fn extracts_hosts() {
+        assert_eq!(
+            host_of("https://Just-Tools.ascencia.re/t").as_deref(),
+            Some("just-tools.ascencia.re")
+        );
+        assert_eq!(
+            host_of("https://exemple.fr:8080").as_deref(),
+            Some("exemple.fr")
+        );
+        assert_eq!(host_of("exemple.fr"), None);
+    }
+
+    #[test]
+    fn an_app_id_without_edge_data_is_not_installed() {
+        let config = Config {
+            app_id: Some("aucune".into()),
+            ..Config::default()
+        };
+        assert!(!is_installed(&config));
+        assert!(
+            is_installed(&Config {
+                edge_path: Some(r"D:\edge\msedge.exe".into()),
+                ..config
+            }),
+            "un navigateur personnalisé garde ses données ailleurs"
+        );
+        assert!(!is_installed(&Config::default()));
     }
 
     #[test]

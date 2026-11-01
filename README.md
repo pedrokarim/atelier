@@ -288,7 +288,15 @@ lecture toute seule :
 
 ```
 Ctrl+Alt+S  →  presse-papiers  →  base64url  →  Edge  →  /tools/text-to-speech?b64=…&autoplay=1
+Ctrl+Alt+T  →  presse-papiers  →  traduction  →  même trajet, avec une voix de la langue cible
 ```
+
+Quand la PWA Just Tools est installée dans Edge, le texte arrive dans sa
+fenêtre déjà ouverte : aucune nouvelle fenêtre, la lecture démarre sur place.
+Atelier la repère au démarrage. Une application désinstallée laisse des
+traces sur le disque, mais plus de ressources de manifeste : c'est à elles
+qu'il reconnaît une application encore lançable, et il remplace un identifiant
+périmé.
 
 Le module remplace le programme autonome `tts-hotkey`. Au premier lancement,
 il reprend ses réglages (`%APPDATA%\just-tools\tts-hotkey.toml`). Tant que
@@ -297,14 +305,15 @@ l'ancien programme tourne, Windows lui réserve le raccourci : la page
 raccourci du menu Démarrer, démarrage automatique). Ses réglages et son
 journal restent en place.
 
-La page **Lecture** montre l'état du raccourci, lit le presse-papiers ou un
-texte saisi, et rappelle la dernière lecture. La page **Réglages** reprend
-tout ce que réglait l'ancien programme :
+La page **Lecture** montre l'état des raccourcis, lit ou traduit le
+presse-papiers ou un texte saisi, et rappelle la dernière lecture. La page
+**Réglages** reprend tout ce que réglait l'ancien programme, et la traduction :
 
 | Réglage | Effet |
 | --- | --- |
 | Raccourci global | Capturé au clavier ; au moins un modificateur (Ctrl, Alt, Shift, Win). Il est suspendu le temps de la saisie |
 | Mode d'ouverture | *Fenêtre applicative* (`--app=`, sans rien installer), *PWA installée* (réutilise sa fenêtre, demande son identifiant), *Onglet* |
+| Traduction | Raccourci, langue cible. La langue d'origine est détectée ; un texte déjà dans la langue cible est lu tel quel |
 | Lecture | Lecture automatique, interface « lecteur », débit, hauteur, volume, voix, langue |
 | Traitement du texte | Longueur maximale, espaces aplatis, mots coupés en fin de ligne recollés |
 | Déblocage de la lecture | Fenêtre mise au premier plan, frappe F24, délai, bip |
@@ -328,6 +337,9 @@ Widget : *Synthèse vocale*, le raccourci et un bouton de lecture.
   est tronqué au-delà de la longueur maximale (12 000 par défaut).
 - En mode *Fenêtre applicative*, chaque lecture ouvre une fenêtre ; le mode
   *PWA installée* réutilise la sienne.
+- La traduction envoie le texte à MyMemory (`api.mymemory.translated.net`).
+  L'accès sans compte est limité à environ 5 000 caractères par jour ; au-delà,
+  une notification le dit et rien n'est lu.
 - Certaines combinaisons `Win+…` sont réservées par Windows et n'atteignent
   aucun programme. Un raccourci refusé laisse l'ancien actif, et une
   notification l'explique.
@@ -436,7 +448,7 @@ dans `atelier.log`. Pour essayer sans toucher à ses vraies données, créer
 | `src/modules/mod.rs` | Contrat d'un module, registre |
 | `src/modules/screen_time/` | Module Temps d'écran : suivi, budgets, rapports |
 | `src/modules/system/` | Module Système : relevés, analyse de l'encombrement, actions |
-| `src/modules/speech/` | Module Synthèse vocale : raccourci global, presse-papiers, ouverture dans Edge, reprise de tts-hotkey |
+| `src/modules/speech/` | Module Synthèse vocale : raccourcis globaux, presse-papiers, traduction, ouverture dans Edge, reprise de tts-hotkey |
 | `ui/core.css`, `ui/core.js` | Styles, composants et noyau communs |
 | `ui/shell.html` | Fenêtre principale |
 | `ui/widget.html`, `ui/notice.html` | Widget du bureau, notification |
